@@ -19,6 +19,12 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import type { Card as GameCard, Grid } from "@/lib/game/types";
 import { buildInviteUrl, encodeGridToToken } from "@/lib/share/url";
+import {
+  type ImageAssetDraft,
+  loadGridDraft,
+  type StoredShareState,
+  saveGridDraft,
+} from "@/lib/storage/db";
 
 import { CardEditorItem } from "./CardEditorItem";
 import { GridPreview } from "./GridPreview";
@@ -51,10 +57,19 @@ const normaliseLabel = (label: string, fallback: string): string => {
   return trimmed.length > 0 ? trimmed : fallback;
 };
 
-interface ShareState {
-  token: string;
-  url: string;
-}
+const extractMimeTypeFromDataUrl = (dataUrl: string): string => {
+  const match = /^data:([^;]+);/i.exec(dataUrl);
+  return match?.[1] ?? "image/png";
+};
+
+const computeDataUrlBytes = (dataUrl: string): number => {
+  const [, base64 = ""] = dataUrl.split(",");
+  if (!base64) {
+    return 0;
+  }
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.max(0, (base64.length * 3) / 4 - padding);
+};
 
 /**
  * Main grid editor allowing the host to configure board dimensions and cards,
@@ -69,12 +84,16 @@ export function GridEditor() {
     const total = 4 * 4;
     return Array.from({ length: total }, (_, index) => createCard(index));
   });
-  const [shareState, setShareState] = useState<ShareState | null>(null);
+  const [shareState, setShareState] = useState<StoredShareState | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [lastSharedSignature, setLastSharedSignature] = useState<string | null>(
     null,
   );
+  const [imageMetadata, setImageMetadata] = useState<
+    Record<string, ImageAssetDraft>
+  >({});
+  const [hasRestoredDraft, setHasRestoredDraft] = useState(false);
 
   const { toast } = useToast();
 
@@ -113,6 +132,119 @@ export function GridEditor() {
   const hasUnsavedChanges =
     shareState !== null && lastSharedSignature !== signature;
 
+  useEffect(() => {
+    setImageMetadata((previous) => {
+      const activeIds = new Set(cards.map((card) => card.id));
+      let mutated = false;
+      const next: Record<string, ImageAssetDraft> = {};
+      for (const [cardId, metadata] of Object.entries(previous)) {
+        if (activeIds.has(cardId)) {
+          next[cardId] = metadata;
+        } else {
+          mutated = true;
+        }
+      }
+      return mutated ? next : previous;
+    });
+  }, [cards]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const restoreDraft = async () => {
+      const draft = await loadGridDraft();
+      if (!draft || cancelled) {
+        return;
+      }
+
+      setGridId(draft.grid.id);
+      setGridName(draft.grid.name);
+      setRows(draft.grid.rows);
+      setColumns(draft.grid.columns);
+      setCards(draft.grid.cards);
+      setShareState(draft.shareState);
+      setLastSharedSignature(draft.lastSharedSignature);
+
+      const restoredAssets: Record<string, ImageAssetDraft> = {};
+      const now = Date.now();
+      for (const card of draft.grid.cards) {
+        if (!card.imageUrl || !card.imageUrl.startsWith("data:")) {
+          continue;
+        }
+        const existing = draft.assets[card.id];
+        if (existing) {
+          restoredAssets[card.id] = existing;
+        } else {
+          const bytes = computeDataUrlBytes(card.imageUrl);
+          restoredAssets[card.id] = {
+            cardId: card.id,
+            source: "upload",
+            mimeType: extractMimeTypeFromDataUrl(card.imageUrl),
+            processedBytes: bytes,
+            originalBytes: bytes,
+            createdAt: now,
+          };
+        }
+      }
+      if (!cancelled) {
+        setImageMetadata(restoredAssets);
+      }
+    };
+
+    restoreDraft()
+      .catch((error) => {
+        console.error("Impossible de restaurer le brouillon précédent.", error);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setHasRestoredDraft(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredAssetMetadata = useMemo(() => {
+    const entries: Record<string, ImageAssetDraft> = {};
+    for (const card of cards) {
+      if (!card.imageUrl || !card.imageUrl.startsWith("data:")) {
+        continue;
+      }
+      const metadata = imageMetadata[card.id];
+      if (metadata) {
+        entries[card.id] = metadata;
+      }
+    }
+    return entries;
+  }, [cards, imageMetadata]);
+
+  useEffect(() => {
+    if (!hasRestoredDraft) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void saveGridDraft({
+        grid: previewGrid,
+        shareState,
+        lastSharedSignature,
+        assets: filteredAssetMetadata,
+      });
+    }, 400);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [
+    previewGrid,
+    shareState,
+    lastSharedSignature,
+    filteredAssetMetadata,
+    hasRestoredDraft,
+  ]);
+
   const handleRowsChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setRows(clampDimension(event.target.valueAsNumber));
   };
@@ -125,6 +257,40 @@ export function GridEditor() {
     setCards((previous) => {
       const next = [...previous];
       next[index] = nextCard;
+      return next;
+    });
+  };
+
+  const handleImageProcessed = (metadata: ImageAssetDraft) => {
+    setImageMetadata((previous) => {
+      const current = previous[metadata.cardId];
+      if (
+        current &&
+        current.mimeType === metadata.mimeType &&
+        current.processedBytes === metadata.processedBytes &&
+        current.originalBytes === metadata.originalBytes &&
+        current.width === metadata.width &&
+        current.height === metadata.height &&
+        current.originalFileName === metadata.originalFileName &&
+        current.originalUrl === metadata.originalUrl &&
+        current.source === metadata.source
+      ) {
+        return previous;
+      }
+      return {
+        ...previous,
+        [metadata.cardId]: metadata,
+      };
+    });
+  };
+
+  const handleImageCleared = (cardId: string) => {
+    setImageMetadata((previous) => {
+      if (!(cardId in previous)) {
+        return previous;
+      }
+      const next = { ...previous };
+      delete next[cardId];
       return next;
     });
   };
@@ -329,7 +495,10 @@ export function GridEditor() {
                   key={card.id}
                   card={card}
                   index={index}
+                  assetMetadata={imageMetadata[card.id]}
                   onChange={(nextCard) => handleCardChange(index, nextCard)}
+                  onImageProcessed={handleImageProcessed}
+                  onImageCleared={handleImageCleared}
                 />
               ))}
             </div>
