@@ -1,103 +1,199 @@
-import Image from "next/image";
+import {
+  ArrowRightIcon,
+  KeyboardIcon,
+  ShieldCheckIcon,
+  SmartphoneIcon,
+  SparklesIcon,
+  UsersIcon,
+} from "lucide-react";
+import Link from "next/link";
+
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+const featureCards = [
+  {
+    title: "Expérience temps réel",
+    description:
+      "Synchronisation P2P instantanée avec PeerJS, même en mobilité. Les reconnects se font automatiquement.",
+    icon: SparklesIcon,
+  },
+  {
+    title: "Pensé pour le mobile",
+    description:
+      "Barre de navigation inférieure, boutons élargis et gestes simples pour jouer d’une seule main.",
+    icon: SmartphoneIcon,
+  },
+  {
+    title: "Accessibilité native",
+    description:
+      "Focus visibles, commandes clavier, contrastes élevés et lecture d’écran optimisée.",
+    icon: KeyboardIcon,
+  },
+];
 
 export default function Home() {
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+    <div className="flex flex-col gap-12">
+      <section className="grid gap-6 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:items-center">
+        <div className="space-y-6">
+          <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+            <SparklesIcon aria-hidden="true" className="size-4" />
+            Votre salle de commande KeyS
+          </div>
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            Orchestrez vos parties KeyS, du mobile au bureau
+          </h1>
+          <p className="text-base text-muted-foreground sm:text-lg">
+            Centralisez la création des salles, pilotez les joueurs et gardez un
+            œil sur la partie en temps réel. L’interface s’adapte
+            automatiquement entre thème clair et sombre.
+          </p>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button asChild size="lg" className="group">
+              <Link href="/create">
+                Démarrer une partie
+                <ArrowRightIcon
+                  aria-hidden="true"
+                  className="size-4 transition-transform group-hover:translate-x-1"
+                />
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="lg">
+              <Link href="/join">Rejoindre avec un code</Link>
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+            <ShieldCheckIcon
+              aria-hidden="true"
+              className="size-5 text-primary"
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            <span>100% P2P : aucune donnée n’est stockée côté serveur.</span>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        <Card className="border border-border/70 shadow-lg shadow-primary/10">
+          <CardHeader className="border-b border-border/70">
+            <div className="flex flex-col gap-2">
+              <CardTitle className="text-xl">Routine express</CardTitle>
+              <CardDescription>
+                Deux parcours optimisés pour lancer ou rejoindre une partie en
+                moins d’une minute.
+              </CardDescription>
+            </div>
+            <CardAction>
+              <Button asChild size="sm" variant="ghost" className="gap-2">
+                <Link href="/create">
+                  Configurer
+                  <ArrowRightIcon aria-hidden="true" className="size-4" />
+                </Link>
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="space-y-5 py-6">
+            <Tabs defaultValue="host" className="space-y-4">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="host">Animateur</TabsTrigger>
+                <TabsTrigger value="guest">Invité</TabsTrigger>
+              </TabsList>
+              <TabsContent
+                value="host"
+                className="space-y-3 text-sm leading-relaxed text-muted-foreground"
+              >
+                <p>Préparez la salle avant l’arrivée de vos joueurs :</p>
+                <ul className="space-y-2 pl-4 marker:text-primary">
+                  <li className="list-disc">
+                    Choisissez votre format de grille et vos personnages.
+                  </li>
+                  <li className="list-disc">
+                    Activez l’audio d’accueil pour briefer les invités
+                    automatiquement.
+                  </li>
+                  <li className="list-disc">
+                    Envoyez le lien sécurisé ou le code de session en un clic.
+                  </li>
+                </ul>
+              </TabsContent>
+              <TabsContent
+                value="guest"
+                className="space-y-3 text-sm leading-relaxed text-muted-foreground"
+              >
+                <p>Une expérience fluide pour les participants :</p>
+                <ul className="space-y-2 pl-4 marker:text-primary">
+                  <li className="list-disc">
+                    Saisie rapide du code ou ouverture directe via un lien
+                    partagé.
+                  </li>
+                  <li className="list-disc">
+                    Compatibilité mobile et desktop avec synchronisation
+                    instantanée.
+                  </li>
+                  <li className="list-disc">
+                    Aide contextuelle et rappels des règles à portée de main.
+                  </li>
+                </ul>
+              </TabsContent>
+            </Tabs>
+            <Separator className="bg-border/60" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-dashed border-border/60 px-4 py-3 text-sm text-muted-foreground">
+                <div className="font-semibold text-foreground">
+                  Progrès des joueurs
+                </div>
+                <p>
+                  Visualisez qui a répondu à quelles questions en temps réel.
+                </p>
+              </div>
+              <div className="rounded-lg border border-dashed border-border/60 px-4 py-3 text-sm text-muted-foreground">
+                <div className="font-semibold text-foreground">
+                  Journal de session
+                </div>
+                <p>
+                  Consultez l’historique des échanges pour arbitrer sans stress.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+      <Separator className="bg-border/60" />
+      <section className="grid gap-6 md:grid-cols-3">
+        {featureCards.map((feature) => (
+          <Card key={feature.title} className="h-full border border-border/60">
+            <CardHeader className="flex flex-row items-start justify-between border-b border-border/60">
+              <div className="space-y-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <feature.icon
+                    aria-hidden="true"
+                    className="size-5 text-primary"
+                  />
+                  {feature.title}
+                </CardTitle>
+                <CardDescription>{feature.description}</CardDescription>
+              </div>
+              <UsersIcon
+                aria-hidden="true"
+                className="size-5 text-muted-foreground"
+              />
+            </CardHeader>
+            <CardContent className="py-6 text-sm text-muted-foreground">
+              <p>
+                Les actions sont regroupées en onglets et les retours visuels
+                garantissent une compréhension immédiate, quel que soit
+                l’appareil utilisé.
+              </p>
+            </CardContent>
+          </Card>
+        ))}
+      </section>
     </div>
   );
 }
