@@ -193,21 +193,81 @@ export type Action =
   | GuessAction
   | ResetAction;
 
+/**
+ * Actions that are synchronised through the peer-to-peer channel after the
+ * initial snapshot has been exchanged.
+ */
+export type SynchronisedAction =
+  | Extract<Action, { type: "turn/flipCard" }>
+  | Extract<Action, { type: "turn/end" }>
+  | Extract<Action, { type: "turn/guess" }>
+  | Extract<Action, { type: "game/reset" }>;
+
+/**
+ * Snapshot sent by the host to initialise or resynchronise the guest state.
+ */
+export interface GameSnapshotMessage {
+  type: "game/snapshot";
+  snapshotId: string;
+  issuedAt: number;
+  state: GameState;
+  /** Identifier of the last action applied on top of the snapshot. */
+  lastActionId: string | null;
+}
+
+/**
+ * Envelope describing a turn-level action applied after the initial snapshot.
+ */
+export interface GameActionMessage {
+  type: "game/action";
+  actionId: string;
+  action: SynchronisedAction;
+  issuerId: string;
+  issuedAt: number;
+}
+
+/**
+ * Acknowledgement sent by a guest after applying a snapshot.
+ */
+export interface GameSnapshotAckMessage {
+  type: "game/snapshot-ack";
+  snapshotId: string;
+  receivedAt: number;
+  /** Identifier of the last action known to the acknowledging peer. */
+  lastActionId: string | null;
+}
+
+/**
+ * Request emitted when a peer detects a divergence and needs a fresh snapshot.
+ */
+export interface GameResyncRequestMessage {
+  type: "game/resync-request";
+  requestedAt: number;
+  /** Identifier of the last action successfully applied by the requester. */
+  lastActionId: string | null;
+  /** Optional human-readable description to assist debugging. */
+  reason?: string;
+}
+
+/**
+ * Error message used for non-recoverable synchronisation failures.
+ */
+export interface GameErrorMessage {
+  type: "game/error";
+  code: string;
+  message: string;
+  issuedAt: number;
+}
+
 export type Message =
-  | {
-      type: "game/snapshot";
-      state: GameState;
-      issuedAt: number;
-    }
-  | {
-      type: "game/action";
-      action: Action;
-      issuedAt: number;
-      issuerId: string;
-    }
-  | {
-      type: "game/error";
-      code: string;
-      message: string;
-      issuedAt: number;
-    };
+  | GameSnapshotMessage
+  | GameActionMessage
+  | GameSnapshotAckMessage
+  | GameResyncRequestMessage
+  | GameErrorMessage;
+
+export type GameSnapshotPayload = Omit<GameSnapshotMessage, "type">;
+export type GameActionPayload = Omit<GameActionMessage, "type">;
+export type GameSnapshotAckPayload = Omit<GameSnapshotAckMessage, "type">;
+export type GameResyncRequestPayload = Omit<GameResyncRequestMessage, "type">;
+export type GameErrorPayload = Omit<GameErrorMessage, "type">;

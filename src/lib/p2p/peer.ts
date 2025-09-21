@@ -7,7 +7,7 @@ import Peer, {
 } from "peerjs";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const DEFAULT_SUPPORTED_PROTOCOL_VERSIONS = ["1.0.0"] as const;
+const DEFAULT_SUPPORTED_PROTOCOL_VERSIONS = ["1.1.0", "1.0.0"] as const;
 const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 5000;
 const DEFAULT_HEARTBEAT_TIMEOUT_MS = 12000;

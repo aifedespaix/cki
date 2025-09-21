@@ -277,6 +277,13 @@ export const resetActionSchema = z
   })
   .strict();
 
+export const synchronisedActionSchema = z.discriminatedUnion("type", [
+  flipCardActionSchema,
+  endTurnActionSchema,
+  guessActionSchema,
+  resetActionSchema,
+]);
+
 export const actionSchema: z.ZodType<Action> = z.discriminatedUnion("type", [
   createLobbyActionSchema,
   joinLobbyActionSchema,
@@ -292,16 +299,35 @@ export const messageSchema: z.ZodType<Message> = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal<"game/snapshot">("game/snapshot"),
+      snapshotId: z.string().min(1),
       state: gameStateSchema,
       issuedAt: z.number().int().nonnegative(),
+      lastActionId: z.string().min(1).nullable(),
     })
     .strict(),
   z
     .object({
       type: z.literal<"game/action">("game/action"),
-      action: actionSchema,
+      actionId: z.string().min(1),
+      action: synchronisedActionSchema,
       issuerId: z.string().min(1),
       issuedAt: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal<"game/snapshot-ack">("game/snapshot-ack"),
+      snapshotId: z.string().min(1),
+      receivedAt: z.number().int().nonnegative(),
+      lastActionId: z.string().min(1).nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal<"game/resync-request">("game/resync-request"),
+      requestedAt: z.number().int().nonnegative(),
+      lastActionId: z.string().min(1).nullable(),
+      reason: z.string().min(1).optional(),
     })
     .strict(),
   z
@@ -320,3 +346,4 @@ export type PlayerSchema = typeof playerSchema;
 export type GameStateSchema = typeof gameStateSchema;
 export type ActionSchema = typeof actionSchema;
 export type MessageSchema = typeof messageSchema;
+export type SynchronisedActionSchema = typeof synchronisedActionSchema;
