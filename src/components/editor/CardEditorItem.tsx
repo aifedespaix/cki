@@ -12,8 +12,14 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { Card } from "@/lib/game/types";
+import type { ImageAssetDraft } from "@/lib/storage/db";
+import { processImage } from "@/lib/storage/image-processor";
+import type { ProcessedImage } from "@/workers/image.types";
 
-const MAX_FILE_SIZE_BYTES = 200 * 1024; // 200 kB keeps share URLs manageable.
+const MAX_FILE_SIZE_BYTES = 3 * 1024 * 1024; // 3 MB, will be optimised via worker.
+const MAX_IMAGE_DIMENSION = 512;
+const OUTPUT_FORMAT = "image/webp";
+const OUTPUT_QUALITY = 0.82;
 
 const readableFileSize = (size: number): string => {
   if (size >= 1024 * 1024) {
@@ -25,37 +31,30 @@ const readableFileSize = (size: number): string => {
   return `${size} o`;
 };
 
-const readFileAsDataUrl = (file: File): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result === "string") {
-        resolve(result);
-      } else {
-        reject(new Error("Le fichier n’a pas pu être encodé."));
-      }
-    };
-    reader.onerror = () => {
-      reject(new Error("Impossible de lire le fichier local."));
-    };
-    reader.readAsDataURL(file);
-  });
-
-const ensureImageResponse = async (inputUrl: string): Promise<string> => {
+const downloadImageBlob = async (
+  inputUrl: string,
+): Promise<{ blob: Blob; resolvedUrl: string; mimeType: string }> => {
   const url = inputUrl.trim();
   if (!url) {
     throw new Error("L’URL de l’image est vide.");
   }
 
   if (url.startsWith("data:")) {
-    // Already an inline resource, accept it directly.
-    return url;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error("Impossible de décoder cette URL de données.");
+      }
+      const blob = await response.blob();
+      return { blob, resolvedUrl: url, mimeType: blob.type || "image/png" };
+    } catch (_error) {
+      throw new Error("Impossible de décoder cette URL de données.");
+    }
   }
 
   let response: Response;
   try {
-    response = await fetch(url, { mode: "cors" });
+    response = await fetch(url, { mode: "cors", cache: "no-store" });
   } catch (_error) {
     throw new Error(
       "Impossible d’accéder à cette URL : le site bloque le chargement CORS ou la connexion a échoué.",
@@ -72,13 +71,17 @@ const ensureImageResponse = async (inputUrl: string): Promise<string> => {
     throw new Error("Le contenu téléchargé n’est pas une image valide.");
   }
 
-  return url;
+  const blob = await response.blob();
+  return { blob, resolvedUrl: url, mimeType: contentType };
 };
 
 interface CardEditorItemProps {
   card: Card;
   index: number;
+  assetMetadata?: ImageAssetDraft;
   onChange: (card: Card) => void;
+  onImageProcessed: (metadata: ImageAssetDraft) => void;
+  onImageCleared: (cardId: string) => void;
 }
 
 type ImageStatus =
@@ -89,27 +92,49 @@ type ImageStatus =
 
 const DEFAULT_STATUS: ImageStatus = { type: "idle" };
 
+const buildSuccessMessage = (result: ProcessedImage): string => {
+  const dimensions = `${result.width} × ${result.height}`;
+  const weight = readableFileSize(result.byteLength);
+  return `Image optimisée (${dimensions}, ${weight}).`;
+};
+
 /**
  * Form controls allowing the user to configure an individual card.
  * Handles both URL-based imports with CORS validation and inline file uploads.
  */
-export function CardEditorItem({ card, index, onChange }: CardEditorItemProps) {
+export function CardEditorItem({
+  card,
+  index,
+  assetMetadata,
+  onChange,
+  onImageProcessed,
+  onImageCleared,
+}: CardEditorItemProps) {
   const labelInputId = useId();
   const urlInputId = useId();
   const fileInputId = useId();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeRequestRef = useRef(0);
 
-  const [urlInput, setUrlInput] = useState<string>(
-    card.imageUrl && !card.imageUrl.startsWith("data:") ? card.imageUrl : "",
+  const [urlInput, setUrlInput] = useState<string>(() =>
+    assetMetadata?.originalUrl
+      ? assetMetadata.originalUrl
+      : card.imageUrl && !card.imageUrl.startsWith("data:")
+        ? card.imageUrl
+        : "",
   );
   const [status, setStatus] = useState<ImageStatus>(DEFAULT_STATUS);
 
   useEffect(() => {
-    if (card.imageUrl && !card.imageUrl.startsWith("data:")) {
-      setUrlInput(card.imageUrl);
-    }
-  }, [card.imageUrl]);
+    setUrlInput((current) => {
+      const target = assetMetadata?.originalUrl
+        ? assetMetadata.originalUrl
+        : card.imageUrl && !card.imageUrl.startsWith("data:")
+          ? card.imageUrl
+          : "";
+      return current === target ? current : target;
+    });
+  }, [card.imageUrl, assetMetadata?.originalUrl]);
 
   const updateStatus = (nextStatus: ImageStatus) => {
     setStatus(nextStatus);
@@ -126,6 +151,7 @@ export function CardEditorItem({ card, index, onChange }: CardEditorItemProps) {
 
     if (!urlInput.trim()) {
       onChange({ ...card, imageUrl: undefined });
+      onImageCleared(card.id);
       updateStatus({ type: "success", message: "Image supprimée." });
       return;
     }
@@ -133,14 +159,38 @@ export function CardEditorItem({ card, index, onChange }: CardEditorItemProps) {
     try {
       updateStatus({
         type: "loading",
-        message: "Vérification des en-têtes CORS…",
+        message: "Téléchargement de l’image…",
       });
-      const validatedUrl = await ensureImageResponse(urlInput);
+      const { blob, resolvedUrl } = await downloadImageBlob(urlInput);
+      updateStatus({
+        type: "loading",
+        message: "Optimisation de l’image…",
+      });
+      const processed = await processImage(blob, {
+        maxWidth: MAX_IMAGE_DIMENSION,
+        maxHeight: MAX_IMAGE_DIMENSION,
+        format: OUTPUT_FORMAT,
+        quality: OUTPUT_QUALITY,
+      });
       if (activeRequestRef.current !== requestId) {
         return;
       }
-      onChange({ ...card, imageUrl: validatedUrl });
-      updateStatus({ type: "success", message: "Image externe validée." });
+      onChange({ ...card, imageUrl: processed.dataUrl });
+      onImageProcessed({
+        cardId: card.id,
+        source: "url",
+        mimeType: processed.mimeType,
+        processedBytes: processed.byteLength,
+        originalBytes: blob.size,
+        width: processed.width,
+        height: processed.height,
+        originalUrl: resolvedUrl.startsWith("data:") ? undefined : resolvedUrl,
+        createdAt: Date.now(),
+      });
+      updateStatus({
+        type: "success",
+        message: buildSuccessMessage(processed),
+      });
     } catch (error) {
       if (activeRequestRef.current !== requestId) {
         return;
@@ -185,16 +235,35 @@ export function CardEditorItem({ card, index, onChange }: CardEditorItemProps) {
     }
 
     try {
-      updateStatus({ type: "loading", message: "Encodage de l’image locale…" });
-      const dataUrl = await readFileAsDataUrl(file);
+      updateStatus({
+        type: "loading",
+        message: "Optimisation de l’image…",
+      });
+      const processed = await processImage(file, {
+        maxWidth: MAX_IMAGE_DIMENSION,
+        maxHeight: MAX_IMAGE_DIMENSION,
+        format: OUTPUT_FORMAT,
+        quality: OUTPUT_QUALITY,
+      });
       if (activeRequestRef.current !== requestId) {
         return;
       }
-      onChange({ ...card, imageUrl: dataUrl });
+      onChange({ ...card, imageUrl: processed.dataUrl });
       setUrlInput("");
+      onImageProcessed({
+        cardId: card.id,
+        source: "upload",
+        mimeType: processed.mimeType,
+        processedBytes: processed.byteLength,
+        originalBytes: file.size,
+        width: processed.width,
+        height: processed.height,
+        originalFileName: file.name,
+        createdAt: Date.now(),
+      });
       updateStatus({
         type: "success",
-        message: "Image locale importée (encodage inline).",
+        message: buildSuccessMessage(processed),
       });
     } catch (error) {
       if (activeRequestRef.current !== requestId) {
@@ -218,10 +287,15 @@ export function CardEditorItem({ card, index, onChange }: CardEditorItemProps) {
     activeRequestRef.current += 1;
     onChange({ ...card, imageUrl: undefined });
     setUrlInput("");
+    onImageCleared(card.id);
     updateStatus({ type: "success", message: "Image supprimée." });
   };
 
-  const isInlineImage = Boolean(card.imageUrl?.startsWith("data:"));
+  const optimisedMetadata = assetMetadata;
+  const optimisedDimensions =
+    optimisedMetadata?.width && optimisedMetadata.height
+      ? `${optimisedMetadata.width} × ${optimisedMetadata.height}`
+      : null;
 
   return (
     <div className="space-y-4 rounded-lg border border-border/70 p-4">
@@ -331,14 +405,28 @@ export function CardEditorItem({ card, index, onChange }: CardEditorItemProps) {
         </div>
       ) : null}
       {card.imageUrl ? (
-        <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs">
+        <div className="rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs">
           <div className="flex items-center gap-2 text-muted-foreground">
             <ImageDownIcon aria-hidden="true" className="size-3.5" />
-            <span>
-              {isInlineImage
-                ? "Image encodée dans le lien (data URI)."
-                : "Image chargée depuis une URL accessible."}
-            </span>
+            <div className="flex flex-col">
+              <span>
+                {optimisedMetadata
+                  ? `Image optimisée (${optimisedDimensions ?? "dimensions inconnues"}, ${readableFileSize(optimisedMetadata.processedBytes)})`
+                  : "Image optimisée et stockée localement."}
+              </span>
+              {optimisedMetadata?.source === "upload" &&
+              optimisedMetadata.originalFileName ? (
+                <span className="text-[11px] text-muted-foreground/80">
+                  Fichier : {optimisedMetadata.originalFileName}
+                </span>
+              ) : null}
+              {optimisedMetadata?.source === "url" &&
+              optimisedMetadata.originalUrl ? (
+                <span className="text-[11px] text-muted-foreground/80">
+                  Source : URL validée
+                </span>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}
