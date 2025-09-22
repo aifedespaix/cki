@@ -112,6 +112,147 @@ export const clearHostPreparation = (roomId: string): void => {
   }
 };
 
+const GUEST_SESSION_PREFIX = "cki:guest-session:";
+
+const createGuestStorageKey = (roomId: string): string =>
+  `${GUEST_SESSION_PREFIX}${roomId}`;
+
+export interface GuestSessionRecord {
+  roomId: string;
+  guestId: string;
+  nickname: string | null;
+  viewAsSpectator: boolean;
+  roleSelectionCompleted: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface GuestSessionPayload {
+  roomId: string;
+  guestId: string;
+  nickname: string | null;
+  viewAsSpectator: boolean;
+  roleSelectionCompleted: boolean;
+}
+
+export const persistGuestSession = (payload: GuestSessionPayload): void => {
+  if (!isBrowser) {
+    return;
+  }
+
+  const key = createGuestStorageKey(payload.roomId);
+  const now = Date.now();
+  let createdAt = now;
+
+  try {
+    const existing = window.localStorage.getItem(key);
+    if (existing) {
+      const parsed = JSON.parse(existing) as Partial<GuestSessionRecord> | null;
+      if (
+        parsed &&
+        typeof parsed.createdAt === "number" &&
+        Number.isFinite(parsed.createdAt)
+      ) {
+        createdAt = parsed.createdAt;
+      }
+    }
+  } catch (error) {
+    console.warn(
+      "Impossible de lire la session joueur existante avant mise à jour.",
+      error,
+    );
+  }
+
+  const trimmedNickname =
+    typeof payload.nickname === "string" ? payload.nickname.trim() : "";
+
+  const record: GuestSessionRecord = {
+    roomId: payload.roomId,
+    guestId: payload.guestId,
+    nickname: trimmedNickname ? trimmedNickname : null,
+    viewAsSpectator: Boolean(payload.viewAsSpectator),
+    roleSelectionCompleted: Boolean(payload.roleSelectionCompleted),
+    createdAt,
+    updatedAt: now,
+  };
+
+  try {
+    window.localStorage.setItem(key, JSON.stringify(record));
+  } catch (error) {
+    console.error("Impossible d'enregistrer la session joueur.", error);
+  }
+};
+
+export const loadGuestSession = (roomId: string): GuestSessionRecord | null => {
+  if (!isBrowser) {
+    return null;
+  }
+
+  const key = createGuestStorageKey(roomId);
+  const raw = window.localStorage.getItem(key);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<GuestSessionRecord> | null;
+    if (!parsed) {
+      return null;
+    }
+
+    const guestId =
+      typeof parsed.guestId === "string" && parsed.guestId.trim()
+        ? parsed.guestId.trim()
+        : null;
+    if (!guestId) {
+      return null;
+    }
+
+    const nickname =
+      typeof parsed.nickname === "string" && parsed.nickname.trim()
+        ? parsed.nickname.trim()
+        : null;
+
+    const viewAsSpectator = Boolean(parsed.viewAsSpectator);
+    const roleSelectionCompleted = Boolean(parsed.roleSelectionCompleted);
+
+    const createdAt =
+      typeof parsed.createdAt === "number" && Number.isFinite(parsed.createdAt)
+        ? parsed.createdAt
+        : Date.now();
+    const updatedAt =
+      typeof parsed.updatedAt === "number" && Number.isFinite(parsed.updatedAt)
+        ? parsed.updatedAt
+        : createdAt;
+
+    return {
+      roomId,
+      guestId,
+      nickname,
+      viewAsSpectator,
+      roleSelectionCompleted,
+      createdAt,
+      updatedAt,
+    } satisfies GuestSessionRecord;
+  } catch (error) {
+    console.error("Impossible de lire la session joueur locale.", error);
+    return null;
+  }
+};
+
+export const clearGuestSession = (roomId: string): void => {
+  if (!isBrowser) {
+    return;
+  }
+
+  try {
+    const key = createGuestStorageKey(roomId);
+    window.localStorage.removeItem(key);
+  } catch (error) {
+    console.error("Impossible de supprimer la session joueur.", error);
+  }
+};
+
 const NICKNAME_KEY = "cki:nickname:last-used";
 
 export const loadLatestNickname = (): string | null => {
