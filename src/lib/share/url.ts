@@ -18,6 +18,14 @@ export class InvalidShareTokenError extends Error {
   }
 }
 
+/** Dedicated error thrown when an invite URL targets a different origin. */
+export class InviteUrlOriginMismatchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InviteUrlOriginMismatchError";
+  }
+}
+
 /**
  * Compresses a grid configuration into a compact Base64 token suitable for URLs.
  * The data structure is versioned to remain extensible over time.
@@ -130,4 +138,89 @@ export function extractTokenFromInput(value: string): string | null {
     const fragment = trimmed.slice(fragmentIndex + 1);
     return fragment ? fragment : null;
   }
+}
+
+export interface NormalizedInviteInput {
+  /** Share token extracted from the provided value. */
+  token: string;
+  /** Canonical representation of the user input (absolute URL when possible). */
+  canonicalValue: string;
+  /**
+   * Safe room navigation target restricted to the current origin.
+   * Contains the pathname, query string and hash (token) when the invite URL
+   * points to `/room/{id}`.
+   */
+  roomPathWithToken: string | null;
+}
+
+/**
+ * Normalises a raw invite value to safely reuse it inside the application.
+ *
+ * - Enforces that share URLs belong to the provided {@link currentOrigin}.
+ * - Provides a canonical form (absolute URL) for recognised local invite links.
+ * - Derives a navigation-safe room path preserving the query string and token.
+ */
+export function normalizeInviteInput(
+  rawValue: string,
+  currentOrigin: string,
+): NormalizedInviteInput {
+  const trimmedValue = rawValue.trim();
+  if (!trimmedValue) {
+    throw new InvalidShareTokenError(
+      "Invite input does not contain a share token fragment.",
+    );
+  }
+
+  let canonicalValue = trimmedValue;
+  let roomPathWithToken: string | null = null;
+  let shareToken: string | null = null;
+
+  if (trimmedValue.includes("#")) {
+    try {
+      const url = new URL(trimmedValue, currentOrigin);
+      if (url.origin !== currentOrigin) {
+        throw new InviteUrlOriginMismatchError(
+          "Invite URL must belong to the current origin.",
+        );
+      }
+
+      const tokenFromUrl = url.hash.slice(1);
+      if (!tokenFromUrl) {
+        throw new InvalidShareTokenError(
+          "Invite URL does not contain a share token fragment.",
+        );
+      }
+
+      canonicalValue = url.toString();
+      shareToken = tokenFromUrl;
+
+      if (url.pathname.startsWith("/room/") && url.hash.length > 1) {
+        roomPathWithToken = `${url.pathname}${url.search}${url.hash}`;
+      }
+    } catch (error) {
+      if (error instanceof InviteUrlOriginMismatchError) {
+        throw error;
+      }
+      if (error instanceof InvalidShareTokenError) {
+        throw error;
+      }
+      // If parsing fails we fall back to manual extraction below.
+    }
+  }
+
+  if (!shareToken) {
+    shareToken = extractTokenFromInput(trimmedValue);
+  }
+
+  if (!shareToken) {
+    throw new InvalidShareTokenError(
+      "Invite input does not contain a share token fragment.",
+    );
+  }
+
+  return {
+    token: shareToken,
+    canonicalValue,
+    roomPathWithToken,
+  };
 }

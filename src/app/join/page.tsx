@@ -3,10 +3,12 @@
 import {
   AlertCircleIcon,
   ArrowRightIcon,
+  InfoIcon,
   KeySquareIcon,
   LinkIcon,
   RefreshCcwIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { GridPreview } from "@/components/editor/GridPreview";
@@ -21,8 +23,9 @@ import {
 import type { Grid } from "@/lib/game/types";
 import {
   decodeGridFromToken,
-  extractTokenFromInput,
   InvalidShareTokenError,
+  InviteUrlOriginMismatchError,
+  normalizeInviteInput,
 } from "@/lib/share/url";
 
 const updateLocationHash = (token: string | null) => {
@@ -39,6 +42,7 @@ export default function JoinPage() {
   const [token, setToken] = useState<string | null>(null);
   const [grid, setGrid] = useState<Grid | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [roomPath, setRoomPath] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -78,29 +82,63 @@ export default function JoinPage() {
     setInputValue("");
     setError(null);
     updateLocationHash(null);
+    setRoomPath(null);
   };
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const maybeToken = extractTokenFromInput(inputValue);
-    if (!maybeToken) {
+    const trimmedInput = inputValue.trim();
+    if (!trimmedInput) {
       setError("Veuillez coller un lien ou un code valide.");
       setGrid(null);
       setToken(null);
+      setRoomPath(null);
       updateLocationHash(null);
       return;
     }
 
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const currentOrigin = window.location.origin;
+    let normalizedInput: ReturnType<typeof normalizeInviteInput>;
     try {
-      const payload = decodeGridFromToken(maybeToken);
+      normalizedInput = normalizeInviteInput(inputValue, currentOrigin);
+    } catch (inputError) {
+      setGrid(null);
+      setToken(null);
+      setRoomPath(null);
+      if (inputError instanceof InviteUrlOriginMismatchError) {
+        setError(
+          `Ce lien provient d’un autre site. Demandez un lien commençant par ${currentOrigin}.`,
+        );
+      } else if (inputError instanceof InvalidShareTokenError) {
+        setError("Veuillez coller un lien ou un code valide.");
+      } else {
+        setError(
+          inputError instanceof Error
+            ? inputError.message
+            : "Impossible de lire ce lien d’invitation.",
+        );
+      }
+      updateLocationHash(null);
+      return;
+    }
+
+    setInputValue(normalizedInput.canonicalValue);
+
+    try {
+      const payload = decodeGridFromToken(normalizedInput.token);
       setGrid(payload.grid);
-      setToken(maybeToken);
-      setInputValue(maybeToken);
+      setToken(normalizedInput.token);
+      setRoomPath(normalizedInput.roomPathWithToken);
       setError(null);
-      updateLocationHash(maybeToken);
+      updateLocationHash(normalizedInput.token);
     } catch (decodeError) {
       setGrid(null);
       setToken(null);
+      setRoomPath(null);
       if (decodeError instanceof InvalidShareTokenError) {
         setError(
           "Impossible de lire ce lien d’invitation. Vérifiez qu’il est complet.",
@@ -232,10 +270,35 @@ export default function JoinPage() {
                 </div>
                 <GridPreview grid={grid} />
                 {token ? (
-                  <p className="text-xs text-muted-foreground">
-                    Code importé :{" "}
-                    <span className="font-mono break-all">{token}</span>
-                  </p>
+                  <div className="space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      Code importé :{" "}
+                      <span className="font-mono break-all">{token}</span>
+                    </p>
+                    {roomPath ? (
+                      <Button asChild className="w-full sm:w-auto">
+                        <Link href={roomPath} prefetch={false}>
+                          <ArrowRightIcon
+                            aria-hidden="true"
+                            className="mr-2 size-4"
+                          />
+                          Ouvrir la salle
+                        </Link>
+                      </Button>
+                    ) : (
+                      <div className="flex items-start gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground sm:text-sm">
+                        <InfoIcon
+                          aria-hidden="true"
+                          className="mt-0.5 size-4 shrink-0"
+                        />
+                        <span>
+                          Ce code ne contient pas l’adresse complète de la
+                          salle. Demandez à l’hôte de vous transmettre le lien
+                          intégral pour rejoindre la partie automatiquement.
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 ) : null}
               </>
             ) : (
