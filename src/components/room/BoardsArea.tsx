@@ -33,6 +33,22 @@ type BoardsAreaProps = {
 const GAP_HORIZONTAL = 24;
 const GAP_VERTICAL = 20;
 
+function areSizesEqual(
+  first: readonly Size[],
+  second: readonly Size[],
+): boolean {
+  if (first.length !== second.length) {
+    return false;
+  }
+  return first.every((size, index) => {
+    const other = second[index];
+    if (!other) {
+      return false;
+    }
+    return size.width === other.width && size.height === other.height;
+  });
+}
+
 function clampScale(value: number): number {
   if (!Number.isFinite(value)) {
     return 1;
@@ -76,12 +92,26 @@ export function BoardsArea({
     });
   }, [boards.length]);
 
+  const updateBoardSizes = useCallback(() => {
+    setBoardSizes((previousSizes) => {
+      const measuredSizes = measureBoards();
+      if (areSizesEqual(previousSizes, measuredSizes)) {
+        return previousSizes;
+      }
+      return measuredSizes;
+    });
+  }, [measureBoards]);
+
   const handleBoardRef = useCallback(
     (index: number, node: HTMLDivElement | null) => {
+      const previousNode = boardRefs.current[index] ?? null;
+      if (previousNode === node) {
+        return;
+      }
       boardRefs.current[index] = node;
-      setBoardSizes(measureBoards());
+      updateBoardSizes();
     },
-    [measureBoards],
+    [updateBoardSizes],
   );
 
   useEffect(() => {
@@ -130,20 +160,20 @@ export function BoardsArea({
         return null;
       }
       const observer = new ResizeObserver(() => {
-        setBoardSizes(measureBoards());
+        updateBoardSizes();
       });
       observer.observe(node);
       return observer;
     });
 
-    setBoardSizes(measureBoards());
+    updateBoardSizes();
 
     return () => {
       for (const observer of observers) {
         observer?.disconnect();
       }
     };
-  }, [boards.length, measureBoards]);
+  }, [boards.length, updateBoardSizes]);
 
   const layout = useMemo(() => {
     const boardCount = boards.length;
