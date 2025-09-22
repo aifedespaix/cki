@@ -14,6 +14,7 @@ const DEFAULT_HEARTBEAT_TIMEOUT_MS = 12000;
 const DEFAULT_MAX_RECONNECT_ATTEMPTS = 5;
 const INITIAL_RETRY_DELAY_MS = 750;
 const MAX_RETRY_DELAY_MS = 5000;
+const DEFAULT_OUTBOUND_QUEUE_CAPACITY = 200;
 
 type SupportedProtocolVersion = string;
 
@@ -152,8 +153,8 @@ export interface PeerRuntime<AppMessages extends MessageRecord> {
   /** Tears down the PeerJS instance entirely. */
   destroy(): void;
   /**
-   * Sends an application-level message. Throws when called before the
-   * handshake completed.
+   * Sends an application-level message. When the data channel is unavailable,
+   * the payload is queued and delivered once the handshake completes.
    */
   send<Type extends keyof AppMessages & string>(
     type: Type,
@@ -172,6 +173,15 @@ export interface PeerRuntime<AppMessages extends MessageRecord> {
 /** Convenience type mapping a message map to its discriminated union. */
 export type ApplicationMessage<AppMessages extends MessageRecord> = {
   [Type in keyof AppMessages & string]: Message<Type, AppMessages[Type]>;
+}[keyof AppMessages & string];
+
+type QueuedApplicationMessage<AppMessages extends MessageRecord> = {
+  [Type in keyof AppMessages & string]: {
+    type: Type;
+    payload: AppMessages[Type];
+    queuedAt: number;
+    attempts: number;
+  };
 }[keyof AppMessages & string];
 
 type HeartbeatState = {
@@ -421,6 +431,7 @@ class PeerConnectionManager<AppMessages extends MessageRecord>
     intervalId: null,
     pendingPings: new Map(),
   };
+  private readonly outboundQueue: QueuedApplicationMessage<AppMessages>[] = [];
   private readonly messageListeners: MessageListenerRegistry = new Map();
   private handshake: HandshakeState = {
     sessionId: null,
@@ -598,6 +609,7 @@ class PeerConnectionManager<AppMessages extends MessageRecord>
     this._peerId = null;
     this._remotePeerId = null;
     this._phase = "idle";
+    this.outboundQueue.length = 0;
     this.messageListeners.clear();
     this.events.clear();
   }
@@ -606,25 +618,94 @@ class PeerConnectionManager<AppMessages extends MessageRecord>
     type: Type,
     payload: AppMessages[Type],
   ): void {
-    if (!this.dataConnection || !this.dataConnection.open) {
-      throw new Error(
-        "Cannot send message because the data channel is closed.",
-      );
-    }
-    if (!this.handshake.completed || !this.handshake.negotiatedVersion) {
-      throw new Error("Cannot send message before the handshake completes.");
-    }
-    const message: Message<Type, AppMessages[Type]> = {
+    const entry = {
       type,
       payload,
-      version: this.handshake.negotiatedVersion,
-      timestamp: Date.now(),
-    };
+      queuedAt: Date.now(),
+      attempts: 0,
+    } as QueuedApplicationMessage<AppMessages>;
+
+    this.flushOutboundQueue();
+
+    if (this.trySendQueuedMessage(entry)) {
+      return;
+    }
+
     this.logger.debug(
-      `[p2p:${this.role}] → ${this.dataConnection.peer}: ${type}`,
+      `[p2p:${this.role}] Queueing ${type} because the data channel is not ready.`,
       payload,
     );
-    this.dataConnection.send(message);
+    this.enqueueOutboundMessage(entry);
+  }
+
+  private enqueueOutboundMessage(
+    message: QueuedApplicationMessage<AppMessages>,
+  ): void {
+    if (this.outboundQueue.length >= DEFAULT_OUTBOUND_QUEUE_CAPACITY) {
+      const dropped = this.outboundQueue.shift();
+      this.logger.warn(
+        `[p2p:${this.role}] Outbound queue capacity reached (${DEFAULT_OUTBOUND_QUEUE_CAPACITY}). Dropping oldest message ${dropped?.type ?? "unknown"}.`,
+      );
+    }
+    this.outboundQueue.push(message);
+  }
+
+  private flushOutboundQueue(): boolean {
+    if (this.outboundQueue.length === 0) {
+      return true;
+    }
+
+    while (this.outboundQueue.length > 0) {
+      const next = this.outboundQueue[0];
+      if (!next) {
+        break;
+      }
+      if (!this.trySendQueuedMessage(next)) {
+        return false;
+      }
+      this.outboundQueue.shift();
+    }
+
+    return true;
+  }
+
+  private trySendQueuedMessage(
+    message: QueuedApplicationMessage<AppMessages>,
+  ): boolean {
+    const connection = this.dataConnection;
+    const negotiatedVersion = this.handshake.negotiatedVersion;
+
+    if (
+      !connection ||
+      !connection.open ||
+      !this.handshake.completed ||
+      !negotiatedVersion
+    ) {
+      return false;
+    }
+
+    message.attempts += 1;
+    const envelope = {
+      type: message.type,
+      payload: message.payload,
+      version: negotiatedVersion,
+      timestamp: message.queuedAt,
+    } satisfies Message<typeof message.type, AppMessages[typeof message.type]>;
+
+    try {
+      this.logger.debug(
+        `[p2p:${this.role}] → ${connection.peer}: ${message.type}`,
+        message.payload,
+      );
+      connection.send(envelope);
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        `[p2p:${this.role}] Failed to send ${message.type} (attempt ${message.attempts}), retrying when possible.`,
+        error,
+      );
+      return false;
+    }
   }
 
   public onMessage<Type extends keyof AppMessages & string>(
@@ -871,6 +952,7 @@ class PeerConnectionManager<AppMessages extends MessageRecord>
     this.setPhase("connected");
     this.events.emit("connection/remote", { peerId: this._remotePeerId });
     this.startHeartbeat();
+    this.flushOutboundQueue();
   }
 
   private handleSystemMessage(message: SystemMessage) {
