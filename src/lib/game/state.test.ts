@@ -197,15 +197,20 @@ describe("reduceGameState", () => {
     ).toThrow(InvalidGameActionError);
   });
 
-  it("prevents flipping the secret card", () => {
+  it("allows toggling the secret card on the player board", () => {
     const playing = createPlayingState();
+    const action = {
+      type: "turn/flipCard" as const,
+      payload: { playerId: hostId, cardId: "card-a" },
+    };
 
-    expect(() =>
-      reduceGameState(playing, {
-        type: "turn/flipCard",
-        payload: { playerId: hostId, cardId: "card-a" },
-      }),
-    ).toThrow(InvalidGameActionError);
+    const afterFirstFlip = reduceGameState(playing, action);
+    expect(selectActivePlayer(afterFirstFlip)?.flippedCardIds).toEqual([
+      "card-a",
+    ]);
+
+    const afterSecondFlip = reduceGameState(afterFirstFlip, action);
+    expect(selectActivePlayer(afterSecondFlip)?.flippedCardIds).toEqual([]);
   });
 
   it("allows toggling cards on repeated flips", () => {
