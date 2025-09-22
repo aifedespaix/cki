@@ -19,7 +19,7 @@ import {
   useRef,
   useState,
 } from "react";
-
+import { DevPanel } from "@/components/app/DevPanel";
 import {
   type HeaderActionState,
   useHeaderActionRegistration,
@@ -52,6 +52,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useRenderMetrics } from "@/lib/debug/renderMetrics";
 import {
   canStartGame,
   createInitialState,
@@ -118,6 +119,7 @@ export default function RoomPage() {
   const router = useRouter();
   const hostNameParam = searchParams?.get("hostName") ?? null;
   const hostIdParam = searchParams?.get("hostId") ?? null;
+  const renderMetrics = useRenderMetrics();
 
   const [hostPreparation, setHostPreparation] =
     useState<HostPreparationRecord | null>(null);
@@ -1351,6 +1353,12 @@ export default function RoomPage() {
         currentCardId={secretSelectionCurrentCardId}
         playerName={secretSelectionPlayerName}
         onConfirm={handleConfirmSecretSelection}
+      />
+      <DevPanel
+        roomId={roomId}
+        peerRole={resolvedPeerRole}
+        peerState={peerConnection}
+        renderMetrics={renderMetrics}
       />
     </div>
   );

@@ -79,6 +79,17 @@ bun run format
 
 ---
 
+## 🧪 Development Diagnostics
+
+### Dev panel
+
+- The in-game developer panel appears automatically in non-production builds (`NODE_ENV !== "production"`).
+- It exposes the PeerJS connection phase, ICE retry history, and lightweight React render metrics while you play.
+- Set `NEXT_PUBLIC_DEV_PANEL=off` before starting the dev server if you want to disable it locally.
+- The panel never renders in production builds, even if the environment variable is set.
+
+---
+
 ## 📦 shadcn/ui Components
 
 Installed components:
