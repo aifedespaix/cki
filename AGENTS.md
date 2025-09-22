@@ -148,6 +148,15 @@ bun build          # Build Next (production)
 - **Accessibility**: focus, ARIA, keyboard support.
 - **Test multi-devices**: Android, iOS, desktop.
 
+## 🧭 Code Quality & Architecture
+
+- **Maximize clarity**: prefer explicit, well-named modules, types, and functions so that intent is obvious without reading implementation details.
+- **Split responsibilities**: isolate business and computational logic in dedicated hooks, services, or utility modules rather than UI components.
+- **Thin components**: React components must stay as small as possible, receiving a minimal number of props and delegating complex work to extracted helpers.
+- **Composable building blocks**: compose the UI from multiple focused components instead of a single large one; each component should address one concern and expose a concise interface.
+- **Shared logic**: when logic is reused, centralize it in strongly typed, documented modules to avoid duplication and ease testing.
+- **Testing mindset**: design logic modules to be easily testable (pure functions, deterministic helpers) while keeping presentational layers simple.
+
 ---
 
 ## 🚨 Risks & Pitfalls
