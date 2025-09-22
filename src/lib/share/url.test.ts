@@ -43,9 +43,15 @@ describe("share/url", () => {
 
   it("builds a proper invite URL", () => {
     const token = "abc";
-    const url = buildInviteUrl("https://example.com", token);
+    const url = buildInviteUrl(
+      "https://example.com",
+      { roomId: "room-123", hostId: "player-host", hostName: "Alice" },
+      token,
+    );
 
-    expect(url).toBe("https://example.com/join#abc");
+    expect(url).toBe(
+      "https://example.com/room/room-123?hostId=player-host&hostName=Alice&role=guest#abc",
+    );
   });
 
   it("extracts tokens from URLs or raw values", () => {
