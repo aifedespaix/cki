@@ -127,6 +127,31 @@ describe("reduceGameState", () => {
     );
   });
 
+  it("ignores join actions replayed after the match has started", () => {
+    const playing = createPlayingState();
+    const replayed = reduceGameState(playing, {
+      type: "game/joinLobby",
+      payload: {
+        player: { id: guestId, name: "Guest" },
+      },
+    });
+
+    expect(replayed).toBe(playing);
+  });
+
+  it("prevents new participants from joining once the match has started", () => {
+    const playing = createPlayingState();
+
+    expect(() =>
+      reduceGameState(playing, {
+        type: "game/joinLobby",
+        payload: {
+          player: { id: "late", name: "Late Player" },
+        },
+      }),
+    ).toThrow(InvalidGameActionError);
+  });
+
   it("rejects more than two players in a lobby", () => {
     const lobby = createLobbyState();
     expect(() =>

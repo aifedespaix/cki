@@ -172,6 +172,23 @@ export const reduceGameState = (
     }
 
     case "game/joinLobby": {
+      const identity = playerIdentitySchema.parse(action.payload.player);
+
+      if (
+        state.status === GameStatus.Playing ||
+        state.status === GameStatus.Finished
+      ) {
+        const alreadyParticipant = state.players.some(
+          (player) => player.id === identity.id,
+        );
+        assert(
+          alreadyParticipant,
+          action,
+          "Cannot join a match that has already started",
+        );
+        return state;
+      }
+
       const lobbyState = expectState(state, GameStatus.Lobby, action);
       assert(
         lobbyState.players.length < 2,
@@ -179,7 +196,6 @@ export const reduceGameState = (
         "Lobby already has two players",
       );
 
-      const identity = playerIdentitySchema.parse(action.payload.player);
       const alreadyJoined = lobbyState.players.some(
         (player) => player.id === identity.id,
       );
