@@ -75,9 +75,11 @@ export default function RootLayout({
             <Header />
             <main
               id="main-content"
-              className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 pb-36 pt-6 md:px-6 md:pb-12"
+              className="mx-auto flex w-full max-w-6xl flex-1 min-h-0 flex-col px-4 pt-6 md:px-6"
             >
-              {children}
+              <div className="page-shell flex flex-1 flex-col gap-8 pb-36 md:pb-12">
+                {children}
+              </div>
             </main>
             <footer className="border-t border-border/70 bg-background/95">
               <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between md:px-6">

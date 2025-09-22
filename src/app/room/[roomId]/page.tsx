@@ -8,6 +8,7 @@ import {
   CrownIcon,
   EyeIcon,
   EyeOffIcon,
+  InfoIcon,
   PlayIcon,
   ShuffleIcon,
   TargetIcon,
@@ -35,6 +36,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   canStartGame,
@@ -132,16 +141,22 @@ interface HostIdentitySummary {
   name: string;
 }
 
-function InviteLinkCard({
+function InviteDialog({
   grid,
   roomId,
   host,
   canShare,
+  allowJoin,
+  onJoin,
+  isJoining,
 }: {
   grid: Grid | null;
   roomId: string | null;
   host: HostIdentitySummary | null;
   canShare: boolean;
+  allowJoin: boolean;
+  onJoin: (nickname: string) => void;
+  isJoining: boolean;
 }) {
   const [origin, setOrigin] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<CopyStatus>("idle");
@@ -245,112 +260,145 @@ function InviteLinkCard({
   const invitePlaceholder = hasTokenError
     ? "Erreur lors de la génération du lien"
     : "Le lien apparaîtra ici dès qu’il est prêt.";
+  const hostName = host?.name ?? "Hôte";
 
   return (
-    <Card className="border border-border/70">
-      <CardHeader>
-        <CardTitle>Inviter un adversaire</CardTitle>
-        <CardDescription>
-          Envoyez ce lien à vos amis : ils accéderont directement à cette salle
-          avec le plateau « {grid.name} » reconstruit automatiquement.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <label
-            htmlFor="invite-link"
-            className="text-sm font-medium text-foreground"
-          >
-            Lien d’invitation
-          </label>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-            <input
-              id="invite-link"
-              type="text"
-              value={inviteUrl ?? ""}
-              readOnly
-              placeholder={invitePlaceholder}
-              onFocus={(event) => event.currentTarget.select()}
-              spellCheck={false}
-              className="w-full flex-1 rounded-md border border-border/70 bg-background px-3 py-2 text-xs font-mono shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
-              aria-invalid={hasTokenError || copyStatus === "error"}
-              aria-describedby={
-                hasTokenError
-                  ? "invite-link-error"
-                  : copyStatus === "error" && copyError
-                    ? "invite-link-copy-error"
-                    : undefined
-              }
-              disabled={!canShare}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleCopy}
-              disabled={!inviteUrl || !canShare}
-              className="sm:w-auto sm:flex-none"
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="flex items-center gap-2"
+        >
+          <CopyIcon aria-hidden className="size-4" />
+          Inviter
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Inviter un adversaire</DialogTitle>
+          <DialogDescription>
+            Partagez ce lien pour permettre à un joueur de rejoindre la salle et
+            importer automatiquement le plateau « {grid.name} ».
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <label
+              htmlFor="invite-link"
+              className="text-sm font-medium text-foreground"
             >
-              {copyStatus === "copied" ? (
-                <>
-                  <CheckCircle2Icon aria-hidden className="mr-2 size-4" />
-                  Lien copié
-                </>
-              ) : (
-                <>
-                  <CopyIcon aria-hidden className="mr-2 size-4" />
-                  Copier
-                </>
-              )}
-            </Button>
+              Lien d’invitation
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+              <input
+                id="invite-link"
+                type="text"
+                value={inviteUrl ?? ""}
+                readOnly
+                placeholder={invitePlaceholder}
+                onFocus={(event) => event.currentTarget.select()}
+                spellCheck={false}
+                className="w-full flex-1 rounded-md border border-border/70 bg-background px-3 py-2 text-xs font-mono shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
+                aria-invalid={hasTokenError || copyStatus === "error"}
+                aria-describedby={
+                  hasTokenError
+                    ? "invite-link-error"
+                    : copyStatus === "error" && copyError
+                      ? "invite-link-copy-error"
+                      : undefined
+                }
+                disabled={!canShare}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCopy}
+                disabled={!inviteUrl || !canShare}
+                className="sm:w-auto sm:flex-none"
+              >
+                {copyStatus === "copied" ? (
+                  <>
+                    <CheckCircle2Icon aria-hidden className="mr-2 size-4" />
+                    Lien copié
+                  </>
+                ) : (
+                  <>
+                    <CopyIcon aria-hidden className="mr-2 size-4" />
+                    Copier
+                  </>
+                )}
+              </Button>
+            </div>
+            {sharePayload.token ? (
+              <p className="text-xs text-muted-foreground">
+                Token brut :{" "}
+                <code className="break-all rounded bg-muted px-1 py-0.5">
+                  {sharePayload.token}
+                </code>
+              </p>
+            ) : null}
+            {hasTokenError ? (
+              <div
+                id="invite-link-error"
+                className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                aria-live="polite"
+              >
+                <AlertCircleIcon aria-hidden className="mt-0.5 size-4" />
+                <span>
+                  Impossible de générer le lien d’invitation.{" "}
+                  {sharePayload.error}
+                </span>
+              </div>
+            ) : canShare ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <ArrowRightIcon aria-hidden className="size-4" />
+                Les invités peuvent ouvrir ce lien sur n’importe quel appareil
+                pour importer automatiquement votre plateau.
+              </p>
+            ) : (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <EyeIcon aria-hidden className="size-4" />
+                Seul l’hôte peut partager ce lien depuis cet appareil.
+              </p>
+            )}
+            {copyStatus === "error" && copyError ? (
+              <p
+                id="invite-link-copy-error"
+                className="text-sm text-destructive"
+                aria-live="polite"
+              >
+                {copyError}
+              </p>
+            ) : null}
           </div>
+          {allowJoin ? (
+            <div className="space-y-4 border-t border-border/60 pt-4">
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Rejoindre la salle de {hostName}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Choisissez un pseudo pour apparaître auprès de votre
+                  adversaire avant d’entrer dans la salle.
+                </p>
+              </div>
+              <JoinAsGuestForm
+                hostName={hostName}
+                onJoin={onJoin}
+                disabled={!allowJoin || isJoining}
+                isSubmitting={isJoining}
+              />
+            </div>
+          ) : null}
         </div>
-        {sharePayload.token ? (
-          <p className="text-xs text-muted-foreground">
-            Token brut :{" "}
-            <code className="break-all rounded bg-muted px-1 py-0.5">
-              {sharePayload.token}
-            </code>
-          </p>
-        ) : null}
-        {hasTokenError ? (
-          <div
-            id="invite-link-error"
-            className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            aria-live="polite"
-          >
-            <AlertCircleIcon aria-hidden className="mt-0.5 size-4" />
-            <span>
-              Impossible de générer le lien d’invitation. {sharePayload.error}
-            </span>
-          </div>
-        ) : canShare ? (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <ArrowRightIcon aria-hidden className="size-4" />
-            Les invités peuvent ouvrir ce lien sur n’importe quel appareil pour
-            importer automatiquement votre plateau.
-          </p>
-        ) : (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <EyeIcon aria-hidden className="size-4" />
-            Seul l’hôte peut partager ce lien. Vous consultez la salle en tant
-            que spectateur.
-          </p>
-        )}
-        {copyStatus === "error" && copyError ? (
-          <p
-            id="invite-link-copy-error"
-            className="text-sm text-destructive"
-            aria-live="polite"
-          >
-            {copyError}
-          </p>
-        ) : null}
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function JoinAsGuestCard({
+function JoinAsGuestForm({
   hostName,
   onJoin,
   disabled,
@@ -387,65 +435,57 @@ function JoinAsGuestCard({
   };
 
   return (
-    <Card className="border border-border/70">
-      <CardHeader>
-        <CardTitle>Rejoindre la partie</CardTitle>
-        <CardDescription>
-          Entrez votre pseudo pour rejoindre la salle de {hostName} en tant
-          qu’adversaire.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <div className="space-y-2">
-            <label
-              htmlFor="guest-nickname"
-              className="text-sm font-medium text-foreground"
-            >
-              Votre pseudo
-            </label>
-            <input
-              id="guest-nickname"
-              type="text"
-              value={nickname}
-              onChange={(event) => {
-                setNickname(event.target.value);
-                if (localError) {
-                  setLocalError(null);
-                }
-              }}
-              onBlur={() => {
-                if (!nickname.trim()) {
-                  setLocalError(
-                    "Un pseudo est nécessaire pour identifier chaque joueur.",
-                  );
-                }
-              }}
-              className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              placeholder="Invité mystère"
-              maxLength={40}
-              autoComplete="off"
-              disabled={disabled || isSubmitting}
-            />
-          </div>
-          <div className="space-y-2 text-sm text-muted-foreground">
-            <p>
-              Ce pseudo est partagé via la connexion pair-à-pair afin que votre
-              adversaire puisse vous identifier.
-            </p>
-          </div>
-          {localError ? (
-            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {localError}
-            </div>
-          ) : null}
-          <Button type="submit" disabled={disabled || isSubmitting}>
-            <UsersIcon aria-hidden className="mr-2 size-4" />
-            {isSubmitting ? "Connexion…" : "Rejoindre la salle"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+    <form className="space-y-4" onSubmit={handleSubmit}>
+      <div className="space-y-2">
+        <label
+          htmlFor="guest-nickname"
+          className="text-sm font-medium text-foreground"
+        >
+          Votre pseudo
+        </label>
+        <input
+          id="guest-nickname"
+          type="text"
+          value={nickname}
+          onChange={(event) => {
+            setNickname(event.target.value);
+            if (localError) {
+              setLocalError(null);
+            }
+          }}
+          onBlur={() => {
+            if (!nickname.trim()) {
+              setLocalError(
+                "Un pseudo est nécessaire pour identifier chaque joueur.",
+              );
+            }
+          }}
+          className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          placeholder="Invité mystère"
+          maxLength={40}
+          autoComplete="off"
+          disabled={disabled || isSubmitting}
+        />
+      </div>
+      <div className="space-y-2 text-sm text-muted-foreground">
+        <p>
+          Ce pseudo sera partagé via la connexion pair-à-pair afin que votre
+          adversaire sache qui a rejoint la salle.
+        </p>
+        <p>
+          Vous pourrez le modifier ultérieurement depuis votre tableau de bord.
+        </p>
+      </div>
+      {localError ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {localError}
+        </div>
+      ) : null}
+      <Button type="submit" disabled={disabled || isSubmitting}>
+        <UsersIcon aria-hidden className="mr-2 size-4" />
+        {isSubmitting ? "Connexion…" : `Rejoindre ${hostName}`}
+      </Button>
+    </form>
   );
 }
 function ParticipantChip({ summary }: { summary: PlayerSummary }) {
@@ -474,7 +514,7 @@ function ParticipantChip({ summary }: { summary: PlayerSummary }) {
   );
 }
 
-function ParticipantBanner({
+function ParticipantsDialog({
   players,
   spectators,
   status,
@@ -487,67 +527,162 @@ function ParticipantBanner({
   turn: number | null;
   activePlayerName: string | null;
 }) {
+  const playerCount = players.length;
   return (
-    <section className="rounded-lg border border-border/70 bg-muted/30 p-5 shadow-sm">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex-1 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            <UsersIcon aria-hidden className="size-4" />
-            Joueurs connectés ({players.length}/2)
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="flex items-center gap-2"
+        >
+          <UsersIcon aria-hidden className="size-4" />
+          Participants ({playerCount}/2)
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Joueurs et spectateurs</DialogTitle>
+          <DialogDescription>
+            Consultez l’état des connexions en temps réel.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              <UsersIcon aria-hidden className="size-4" />
+              Joueurs connectés ({playerCount}/2)
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {playerCount > 0 ? (
+                players.map((summary) => (
+                  <ParticipantChip key={summary.player.id} summary={summary} />
+                ))
+              ) : (
+                <span className="text-sm text-muted-foreground">
+                  Aucun joueur connecté pour le moment.
+                </span>
+              )}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {players.length > 0 ? (
-              players.map((summary) => (
-                <ParticipantChip key={summary.player.id} summary={summary} />
-              ))
-            ) : (
-              <span className="text-sm text-muted-foreground">
-                Aucun joueur connecté pour le moment.
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-1">
+              <span className="text-xs font-semibold uppercase text-muted-foreground">
+                État
               </span>
-            )}
-          </div>
-        </div>
-        <div className="flex-1 min-w-[220px] space-y-3">
-          <div className="space-y-1">
-            <span className="text-xs font-semibold uppercase text-muted-foreground">
-              État
-            </span>
-            <p className="text-sm font-medium text-foreground">
-              {formatStatusLabel(status)}
-            </p>
-          </div>
-          {turn !== null ? (
+              <p className="text-sm font-medium text-foreground">
+                {formatStatusLabel(status)}
+              </p>
+            </div>
             <div className="space-y-1">
               <span className="text-xs font-semibold uppercase text-muted-foreground">
                 Tour actuel
               </span>
               <p className="text-sm text-foreground">
-                Tour {turn}
-                {activePlayerName ? ` — ${activePlayerName}` : ""}
+                {turn !== null
+                  ? `Tour ${turn}${
+                      activePlayerName ? ` — ${activePlayerName}` : ""
+                    }`
+                  : "En attente de préparation"}
               </p>
             </div>
-          ) : null}
+          </div>
+          <div className="space-y-2 border-t border-border/60 pt-4">
+            <span className="text-xs font-semibold uppercase text-muted-foreground">
+              Spectateurs ({spectators.length})
+            </span>
+            {spectators.length > 0 ? (
+              <ul className="flex flex-wrap gap-2">
+                {spectators.map((spectator) => (
+                  <li key={spectator.id}>
+                    <Badge variant="secondary">{spectator.name}</Badge>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Aucun spectateur connecté pour le moment.
+              </p>
+            )}
+          </div>
         </div>
-      </div>
-      <div className="mt-5 border-t border-border/60 pt-4">
-        <span className="text-xs font-semibold uppercase text-muted-foreground">
-          Spectateurs ({spectators.length})
-        </span>
-        {spectators.length > 0 ? (
-          <ul className="mt-2 flex flex-wrap gap-2">
-            {spectators.map((spectator) => (
-              <li key={spectator.id}>
-                <Badge variant="secondary">{spectator.name}</Badge>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-2 text-sm text-muted-foreground">
-            Aucun spectateur connecté pour le moment.
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RoomInformationDialog({
+  roomId,
+  grid,
+  status,
+  hostName,
+}: {
+  roomId: string;
+  grid: Grid;
+  status: GameStatus;
+  hostName: string | null;
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="flex items-center gap-2"
+        >
+          <InfoIcon aria-hidden className="size-4" />
+          Infos salle
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Informations sur la salle</DialogTitle>
+          <DialogDescription>
+            Récapitulatif du plateau et des paramètres de cette partie.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-5 text-sm">
+          <div className="grid gap-3">
+            <div className="space-y-1">
+              <span className="text-xs font-semibold uppercase text-muted-foreground">
+                Identifiant
+              </span>
+              <code className="inline-flex items-center rounded bg-muted px-2 py-1 text-xs font-mono">
+                {roomId}
+              </code>
+            </div>
+            <div className="space-y-1">
+              <span className="text-xs font-semibold uppercase text-muted-foreground">
+                Plateau
+              </span>
+              <p className="text-foreground">
+                {grid.name} — {grid.rows} × {grid.columns} ({grid.cards.length}{" "}
+                cartes)
+              </p>
+            </div>
+            <div className="space-y-1">
+              <span className="text-xs font-semibold uppercase text-muted-foreground">
+                Hôte
+              </span>
+              <p className="text-foreground">{hostName ?? "Hôte inconnu"}</p>
+            </div>
+            <div className="space-y-1">
+              <span className="text-xs font-semibold uppercase text-muted-foreground">
+                État
+              </span>
+              <p className="text-foreground">{formatStatusLabel(status)}</p>
+            </div>
+          </div>
+          <p className="text-muted-foreground">
+            La salle reste active tant que les participants conservent cette
+            page ouverte. Les échanges se synchronisent directement entre
+            appareils via une connexion pair-à-pair sécurisée.
           </p>
-        )}
-      </div>
-    </section>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -772,7 +907,7 @@ function PlayerBoard({
   return (
     <Card
       className={cn(
-        "border-2 shadow-sm transition-colors",
+        "flex h-full min-h-0 flex-col border-2 shadow-sm transition-colors",
         accentClasses[accent],
       )}
     >
@@ -817,7 +952,7 @@ function PlayerBoard({
           {grid.rows} × {grid.columns} — {grid.cards.length} cartes
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="flex flex-1 min-h-0 flex-col space-y-6 overflow-hidden">
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-3">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -840,7 +975,7 @@ function PlayerBoard({
           {secretContent}
         </div>
 
-        <div className="space-y-3">
+        <div className="flex flex-1 min-h-0 flex-col space-y-3">
           <div className="flex flex-wrap items-center justify-between text-xs text-muted-foreground">
             <span>
               {hiddenCount} carte{hiddenCount > 1 ? "s" : ""} masquée
@@ -856,39 +991,41 @@ function PlayerBoard({
               </span>
             ) : null}
           </div>
-          <ul
-            className="grid list-none gap-2 sm:gap-3"
-            style={{ gridTemplateColumns: templateColumns }}
-            aria-label={`Plateau de ${player.name}`}
-          >
-            {grid.cards.map((card) => {
-              const hidden = hiddenCardIds.has(card.id);
-              const showSecret =
-                showSecretCard && player.secretCardId === card.id;
-              const disabled = interactionType === "none";
-              const actionLabel =
-                interactionType === "toggle"
-                  ? hidden
-                    ? `Révéler ${card.label}`
-                    : `Masquer ${card.label}`
-                  : interactionType === "select"
-                    ? `Sélectionner ${card.label} comme carte secrète`
-                    : card.label;
-              return (
-                <li key={card.id} className="list-none">
-                  <CardTile
-                    card={card}
-                    hidden={hidden}
-                    showSecretBadge={showSecret}
-                    disabled={disabled}
-                    onClick={() => handleCardInteraction(card.id)}
-                    actionLabel={actionLabel}
-                    interactionType={interactionType}
-                  />
-                </li>
-              );
-            })}
-          </ul>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <ul
+              className="grid h-full list-none gap-2 overflow-auto pr-1 sm:gap-3"
+              style={{ gridTemplateColumns: templateColumns }}
+              aria-label={`Plateau de ${player.name}`}
+            >
+              {grid.cards.map((card) => {
+                const hidden = hiddenCardIds.has(card.id);
+                const showSecret =
+                  showSecretCard && player.secretCardId === card.id;
+                const disabled = interactionType === "none";
+                const actionLabel =
+                  interactionType === "toggle"
+                    ? hidden
+                      ? `Révéler ${card.label}`
+                      : `Masquer ${card.label}`
+                    : interactionType === "select"
+                      ? `Sélectionner ${card.label} comme carte secrète`
+                      : card.label;
+                return (
+                  <li key={card.id} className="list-none">
+                    <CardTile
+                      card={card}
+                      hidden={hidden}
+                      showSecretBadge={showSecret}
+                      disabled={disabled}
+                      onClick={() => handleCardInteraction(card.id)}
+                      actionLabel={actionLabel}
+                      interactionType={interactionType}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -897,7 +1034,7 @@ function PlayerBoard({
 
 function MissingOpponentBoard({ grid }: { grid: Grid | null }) {
   return (
-    <Card className="border-dashed border-border/70 bg-muted/20">
+    <Card className="flex h-full flex-col border-dashed border-border/70 bg-muted/20">
       <CardHeader>
         <CardTitle>En attente d’un adversaire</CardTitle>
         <CardDescription>
@@ -906,7 +1043,7 @@ function MissingOpponentBoard({ grid }: { grid: Grid | null }) {
             : "Configurez un plateau pour démarrer la partie."}
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-1 flex-col justify-center gap-3">
         <p className="text-sm text-muted-foreground">
           Invitez un joueur à rejoindre cette salle pour afficher son plateau et
           démarrer la partie.
@@ -1458,135 +1595,200 @@ export default function RoomPage() {
     return null;
   }
 
+  const hostPlayerName =
+    playerSummaries.find((summary) => summary.player.role === PlayerRole.Host)
+      ?.player.name ??
+    hostIdentityForInvite?.name ??
+    null;
+
+  const summaryItems = [
+    {
+      key: "players",
+      label: "Joueurs connectés",
+      value: `${playerSummaries.length}/2`,
+      icon: <UsersIcon aria-hidden className="size-4" />,
+    },
+    {
+      key: "status",
+      label: "État de la partie",
+      value: formatStatusLabel(gameState.status),
+      icon: <TargetIcon aria-hidden className="size-4" />,
+    },
+    {
+      key: "turn",
+      label: "Tour actuel",
+      value:
+        turn !== null
+          ? `Tour ${turn}${activePlayerName ? ` — ${activePlayerName}` : ""}`
+          : "Préparation en cours",
+      icon: <TimerIcon aria-hidden className="size-4" />,
+    },
+    {
+      key: "spectators",
+      label: "Spectateurs",
+      value: `${spectators.length}`,
+      icon: <EyeIcon aria-hidden className="size-4" />,
+    },
+  ];
+
   return (
-    <div className="flex flex-col gap-8">
-      <section className="space-y-3">
-        <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
-          <UsersIcon aria-hidden className="size-4" />
-          Salle KeyS
-        </div>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Salle {roomId}
-        </h1>
-        <p className="text-base text-muted-foreground sm:text-lg">
-          Gérez les plateaux, les joueurs et le déroulement de la partie.
-        </p>
-      </section>
-
-      <InviteLinkCard
-        grid={grid}
-        roomId={normalizedRoomId}
-        host={hostIdentityForInvite}
-        canShare={canShareInvite}
-      />
-
-      {shouldShowJoinCard && hostIdentityForInvite ? (
-        <JoinAsGuestCard
-          hostName={hostIdentityForInvite.name}
-          onJoin={handleJoinAsGuest}
-          disabled={isJoiningLobby}
-          isSubmitting={isJoiningLobby}
-        />
-      ) : null}
-
-      <ParticipantBanner
-        players={playerSummaries}
-        spectators={spectators}
-        status={gameState.status}
-        turn={turn}
-        activePlayerName={activePlayerName}
-      />
-
-      {actionError ? (
-        <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          <AlertCircleIcon aria-hidden className="mt-0.5 size-4" />
-          <span>{actionError}</span>
-        </div>
-      ) : null}
-
-      {canHostStart ? (
-        <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-muted-foreground">
-            {startDisabled
-              ? "Chaque joueur doit choisir une carte secrète avant de commencer."
-              : "Lancez la partie pour démarrer le premier tour."}
+    <div className="full-height-page flex min-h-0 flex-1 flex-col gap-6">
+      <div className="flex basis-1/4 min-h-[25%] flex-col gap-6 overflow-auto rounded-2xl border border-border/70 bg-background/80 p-6 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+              <UsersIcon aria-hidden className="size-4" />
+              Salle KeyS
+            </div>
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              Salle {roomId}
+            </h1>
+            <p className="text-base text-muted-foreground sm:text-lg">
+              Gérez les plateaux, les joueurs et le déroulement de la partie.
+            </p>
           </div>
-          <Button
-            type="button"
-            onClick={handleStartGame}
-            disabled={startDisabled}
-          >
-            <PlayIcon aria-hidden className="mr-2 size-4" />
-            Démarrer le match
-          </Button>
-        </div>
-      ) : null}
-
-      {isLocalTurn ? (
-        <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-background/80 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-muted-foreground">
-            Vous pouvez retourner vos cartes puis passer la main à votre
-            adversaire.
-          </div>
-          <Button type="button" variant="outline" onClick={handleEndTurn}>
-            <ArrowRightIcon aria-hidden className="mr-2 size-4" />
-            Terminer le tour
-          </Button>
-        </div>
-      ) : null}
-
-      {gameState.status === GameStatus.Finished ? (
-        <FinalResultCard state={gameState} cardLookup={cardLookup} />
-      ) : null}
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        {orderedPlayers.map((player) => {
-          const isLocal = localPlayer?.id === player.id;
-          const accent: PlayerBoardAccent = isLocal
-            ? "self"
-            : localPlayer
-              ? "opponent"
-              : "neutral";
-          const hiddenCardIds = new Set(player.flippedCardIds);
-          const secretCard = player.secretCardId
-            ? (cardLookup.get(player.secretCardId) ?? null)
-            : null;
-          const allowSecretSelection =
-            isLocal && gameState.status === GameStatus.Lobby;
-          const allowRandomSecret =
-            allowSecretSelection && grid.cards.length > 0;
-          const allowCardToggle =
-            isLocal &&
-            gameState.status === GameStatus.Playing &&
-            activePlayerId === player.id;
-          const showSecretCard = isSpectatorView || isLocal;
-
-          return (
-            <PlayerBoard
-              key={player.id}
-              player={player}
-              grid={grid}
-              accent={accent}
-              hiddenCardIds={hiddenCardIds}
-              secretCard={secretCard}
-              showSecretCard={showSecretCard}
-              allowSecretSelection={allowSecretSelection}
-              allowRandomSecret={allowRandomSecret}
-              allowCardToggle={allowCardToggle}
-              onSelectSecret={(cardId) => handleSelectSecret(player.id, cardId)}
-              onRandomSecret={() => handleRandomSecret(player)}
-              onToggleCard={(cardId) => handleToggleCard(player.id, cardId)}
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <ParticipantsDialog
+              players={playerSummaries}
+              spectators={spectators}
               status={gameState.status}
-              isLocal={isLocal}
-              isActiveTurn={activePlayerId === player.id}
-              isSpectatorView={isSpectatorView}
-              ready={Boolean(player.secretCardId)}
+              turn={turn}
+              activePlayerName={activePlayerName}
             />
-          );
-        })}
-        {orderedPlayers.length < 2 ? (
-          <MissingOpponentBoard grid={grid} />
+            <InviteDialog
+              grid={grid}
+              roomId={normalizedRoomId}
+              host={hostIdentityForInvite}
+              canShare={canShareInvite}
+              allowJoin={shouldShowJoinCard}
+              onJoin={handleJoinAsGuest}
+              isJoining={isJoiningLobby}
+            />
+            <RoomInformationDialog
+              roomId={roomId}
+              grid={grid}
+              status={gameState.status}
+              hostName={hostPlayerName}
+            />
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {summaryItems.map((item) => (
+            <div
+              key={item.key}
+              className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/20 p-3"
+            >
+              <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                {item.icon}
+              </span>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">
+                  {item.label}
+                </p>
+                <p className="text-sm font-medium text-foreground">
+                  {item.value}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+        {actionError ? (
+          <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertCircleIcon aria-hidden className="mt-0.5 size-4" />
+            <span>{actionError}</span>
+          </div>
         ) : null}
+        {canHostStart ? (
+          <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-muted-foreground">
+              {startDisabled
+                ? "Chaque joueur doit choisir une carte secrète avant de commencer."
+                : "Lancez la partie pour démarrer le premier tour."}
+            </div>
+            <Button
+              type="button"
+              onClick={handleStartGame}
+              disabled={startDisabled}
+            >
+              <PlayIcon aria-hidden className="mr-2 size-4" />
+              Démarrer le match
+            </Button>
+          </div>
+        ) : null}
+        {isLocalTurn ? (
+          <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-background/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-muted-foreground">
+              Vous pouvez retourner vos cartes puis passer la main à votre
+              adversaire.
+            </div>
+            <Button type="button" variant="outline" onClick={handleEndTurn}>
+              <ArrowRightIcon aria-hidden className="mr-2 size-4" />
+              Terminer le tour
+            </Button>
+          </div>
+        ) : null}
+        {gameState.status === GameStatus.Finished ? (
+          <FinalResultCard state={gameState} cardLookup={cardLookup} />
+        ) : null}
+      </div>
+      <div className="flex basis-3/4 min-h-0 flex-col gap-4 overflow-hidden">
+        <div className="flex flex-1 flex-col gap-4 overflow-hidden xl:flex-row xl:gap-6">
+          {orderedPlayers.map((player) => {
+            const isLocal = localPlayer?.id === player.id;
+            const accent: PlayerBoardAccent = isLocal
+              ? "self"
+              : localPlayer
+                ? "opponent"
+                : "neutral";
+            const hiddenCardIds = new Set(player.flippedCardIds);
+            const secretCard = player.secretCardId
+              ? (cardLookup.get(player.secretCardId) ?? null)
+              : null;
+            const allowSecretSelection =
+              isLocal && gameState.status === GameStatus.Lobby;
+            const allowRandomSecret =
+              allowSecretSelection && grid.cards.length > 0;
+            const allowCardToggle =
+              isLocal &&
+              gameState.status === GameStatus.Playing &&
+              activePlayerId === player.id;
+            const showSecretCard = isSpectatorView || isLocal;
+
+            return (
+              <div
+                key={player.id}
+                className="flex flex-1 min-h-[320px] flex-col overflow-hidden"
+              >
+                <PlayerBoard
+                  player={player}
+                  grid={grid}
+                  accent={accent}
+                  hiddenCardIds={hiddenCardIds}
+                  secretCard={secretCard}
+                  showSecretCard={showSecretCard}
+                  allowSecretSelection={allowSecretSelection}
+                  allowRandomSecret={allowRandomSecret}
+                  allowCardToggle={allowCardToggle}
+                  onSelectSecret={(cardId) =>
+                    handleSelectSecret(player.id, cardId)
+                  }
+                  onRandomSecret={() => handleRandomSecret(player)}
+                  onToggleCard={(cardId) => handleToggleCard(player.id, cardId)}
+                  status={gameState.status}
+                  isLocal={isLocal}
+                  isActiveTurn={activePlayerId === player.id}
+                  isSpectatorView={isSpectatorView}
+                  ready={Boolean(player.secretCardId)}
+                />
+              </div>
+            );
+          })}
+          {orderedPlayers.length < 2 ? (
+            <div className="flex flex-1 min-h-[320px] flex-col overflow-hidden">
+              <MissingOpponentBoard grid={grid} />
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
