@@ -16,8 +16,14 @@ import {
   UsersIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import { ImageSafe } from "@/components/common/ImageSafe";
 import { Badge } from "@/components/ui/badge";
@@ -50,10 +56,14 @@ import {
   type Player,
   PlayerRole,
 } from "@/lib/game/types";
-import { buildInviteUrl, encodeGridToToken } from "@/lib/share/url";
+import {
+  buildInviteUrl,
+  decodeGridFromToken,
+  encodeGridToToken,
+} from "@/lib/share/url";
 import type { HostPreparationRecord } from "@/lib/storage/session";
 import { loadHostPreparation } from "@/lib/storage/session";
-import { cn } from "@/lib/utils";
+import { cn, createRandomId } from "@/lib/utils";
 
 interface Spectator {
   id: string;
@@ -75,6 +85,12 @@ const roleLabels: Record<PlayerRole, string> = {
   host: "Hôte",
   guest: "Invité",
 };
+
+interface InviteContext {
+  hostId: string;
+  hostName: string;
+  grid: Grid;
+}
 
 const accentClasses: Record<PlayerBoardAccent, string> = {
   self: "border-sky-400/80 bg-sky-500/10 dark:border-sky-500/60 dark:bg-sky-500/15",
@@ -111,7 +127,22 @@ const getConclusionLabel = (reason: GameConclusionReason): string => {
 
 type CopyStatus = "idle" | "copied" | "error";
 
-function InviteLinkCard({ grid }: { grid: Grid | null }) {
+interface HostIdentitySummary {
+  id: string;
+  name: string;
+}
+
+function InviteLinkCard({
+  grid,
+  roomId,
+  host,
+  canShare,
+}: {
+  grid: Grid | null;
+  roomId: string | null;
+  host: HostIdentitySummary | null;
+  canShare: boolean;
+}) {
   const [origin, setOrigin] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<CopyStatus>("idle");
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -143,16 +174,20 @@ function InviteLinkCard({ grid }: { grid: Grid | null }) {
   }, [grid]);
 
   const inviteUrl = useMemo(() => {
-    if (!sharePayload.token || !origin) {
+    if (!sharePayload.token || !origin || !roomId || !host) {
       return null;
     }
     try {
-      return buildInviteUrl(origin, sharePayload.token);
+      return buildInviteUrl(
+        origin,
+        { roomId, hostId: host.id, hostName: host.name },
+        sharePayload.token,
+      );
     } catch (error) {
       console.error("Impossible de construire l’URL d’invitation.", error);
       return null;
     }
-  }, [origin, sharePayload.token]);
+  }, [origin, sharePayload.token, roomId, host]);
 
   useEffect(() => {
     if (inviteUrl === null) {
@@ -216,8 +251,8 @@ function InviteLinkCard({ grid }: { grid: Grid | null }) {
       <CardHeader>
         <CardTitle>Inviter un adversaire</CardTitle>
         <CardDescription>
-          Envoyez ce lien à vos amis : il ouvre automatiquement la page «
-          Rejoindre » avec le plateau « {grid.name} » prêt à l’emploi.
+          Envoyez ce lien à vos amis : ils accéderont directement à cette salle
+          avec le plateau « {grid.name} » reconstruit automatiquement.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -246,12 +281,13 @@ function InviteLinkCard({ grid }: { grid: Grid | null }) {
                     ? "invite-link-copy-error"
                     : undefined
               }
+              disabled={!canShare}
             />
             <Button
               type="button"
               variant="outline"
               onClick={handleCopy}
-              disabled={!inviteUrl}
+              disabled={!inviteUrl || !canShare}
               className="sm:w-auto sm:flex-none"
             >
               {copyStatus === "copied" ? (
@@ -287,11 +323,17 @@ function InviteLinkCard({ grid }: { grid: Grid | null }) {
               Impossible de générer le lien d’invitation. {sharePayload.error}
             </span>
           </div>
-        ) : (
+        ) : canShare ? (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <ArrowRightIcon aria-hidden className="size-4" />
             Les invités peuvent ouvrir ce lien sur n’importe quel appareil pour
             importer automatiquement votre plateau.
+          </p>
+        ) : (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <EyeIcon aria-hidden className="size-4" />
+            Seul l’hôte peut partager ce lien. Vous consultez la salle en tant
+            que spectateur.
           </p>
         )}
         {copyStatus === "error" && copyError ? (
@@ -303,6 +345,105 @@ function InviteLinkCard({ grid }: { grid: Grid | null }) {
             {copyError}
           </p>
         ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function JoinAsGuestCard({
+  hostName,
+  onJoin,
+  disabled,
+  isSubmitting,
+}: {
+  hostName: string;
+  onJoin: (nickname: string) => void;
+  disabled: boolean;
+  isSubmitting: boolean;
+}) {
+  const [nickname, setNickname] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (disabled) {
+      return;
+    }
+    const trimmed = nickname.trim();
+    if (!trimmed) {
+      setLocalError("Veuillez renseigner un pseudo pour rejoindre la salle.");
+      return;
+    }
+    try {
+      onJoin(trimmed);
+      setLocalError(null);
+    } catch (error) {
+      setLocalError(
+        error instanceof Error
+          ? error.message
+          : "Impossible de rejoindre la salle. Réessayez dans un instant.",
+      );
+    }
+  };
+
+  return (
+    <Card className="border border-border/70">
+      <CardHeader>
+        <CardTitle>Rejoindre la partie</CardTitle>
+        <CardDescription>
+          Entrez votre pseudo pour rejoindre la salle de {hostName} en tant
+          qu’adversaire.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <div className="space-y-2">
+            <label
+              htmlFor="guest-nickname"
+              className="text-sm font-medium text-foreground"
+            >
+              Votre pseudo
+            </label>
+            <input
+              id="guest-nickname"
+              type="text"
+              value={nickname}
+              onChange={(event) => {
+                setNickname(event.target.value);
+                if (localError) {
+                  setLocalError(null);
+                }
+              }}
+              onBlur={() => {
+                if (!nickname.trim()) {
+                  setLocalError(
+                    "Un pseudo est nécessaire pour identifier chaque joueur.",
+                  );
+                }
+              }}
+              className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              placeholder="Invité mystère"
+              maxLength={40}
+              autoComplete="off"
+              disabled={disabled || isSubmitting}
+            />
+          </div>
+          <div className="space-y-2 text-sm text-muted-foreground">
+            <p>
+              Ce pseudo est partagé via la connexion pair-à-pair afin que votre
+              adversaire puisse vous identifier.
+            </p>
+          </div>
+          {localError ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {localError}
+            </div>
+          ) : null}
+          <Button type="submit" disabled={disabled || isSubmitting}>
+            <UsersIcon aria-hidden className="mr-2 size-4" />
+            {isSubmitting ? "Connexion…" : "Rejoindre la salle"}
+          </Button>
+        </form>
       </CardContent>
     </Card>
   );
@@ -816,6 +957,9 @@ export default function RoomPage() {
   const params = useParams<{ roomId: string }>();
   const rawRoomId = params?.roomId;
   const roomId = typeof rawRoomId === "string" ? rawRoomId : "";
+  const searchParams = useSearchParams();
+  const hostNameParam = searchParams?.get("hostName") ?? null;
+  const hostIdParam = searchParams?.get("hostId") ?? null;
 
   const [hostPreparation, setHostPreparation] =
     useState<HostPreparationRecord | null>(null);
@@ -826,6 +970,72 @@ export default function RoomPage() {
   );
   const [actionError, setActionError] = useState<string | null>(null);
   const [spectators] = useState<readonly Spectator[]>([]);
+  const [inviteContext, setInviteContext] = useState<InviteContext | null>(
+    null,
+  );
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [inviteTokenResolved, setInviteTokenResolved] = useState(false);
+  const [inviteGrid, setInviteGrid] = useState<Grid | null>(null);
+  const [inviteTokenError, setInviteTokenError] = useState<string | null>(null);
+  const [localGuestId] = useState(() => createRandomId("player"));
+  const [localGuestName, setLocalGuestName] = useState<string | null>(null);
+  const [isJoiningLobby, setIsJoiningLobby] = useState(false);
+  const inviteHostName = useMemo(() => {
+    const trimmed = hostNameParam?.trim();
+    return trimmed && trimmed.length > 0 ? trimmed : null;
+  }, [hostNameParam]);
+  const inviteHostId = useMemo(() => {
+    const trimmed = hostIdParam?.trim();
+    return trimmed && trimmed.length > 0 ? trimmed : null;
+  }, [hostIdParam]);
+  const fallbackHostId = useMemo(
+    () => createRandomId(roomId ? `host-${roomId}` : "host"),
+    [roomId],
+  );
+  const derivedHostId = inviteHostId ?? fallbackHostId;
+  const inviteHostNameFallback = useMemo(
+    () => inviteHostName ?? "Hôte",
+    [inviteHostName],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const readToken = () => {
+      const hash = window.location.hash.slice(1);
+      setInviteToken(hash ? hash : null);
+    };
+
+    readToken();
+    window.addEventListener("hashchange", readToken);
+    return () => window.removeEventListener("hashchange", readToken);
+  }, []);
+
+  useEffect(() => {
+    setInviteTokenResolved(false);
+    if (!inviteToken) {
+      setInviteGrid(null);
+      setInviteTokenError(null);
+      setInviteTokenResolved(true);
+      return;
+    }
+    try {
+      const payload = decodeGridFromToken(inviteToken);
+      setInviteGrid(payload.grid);
+      setInviteTokenError(null);
+    } catch (error) {
+      setInviteGrid(null);
+      setInviteTokenError(
+        error instanceof Error
+          ? error.message
+          : "Le plateau partagé est invalide.",
+      );
+    } finally {
+      setInviteTokenResolved(true);
+    }
+  }, [inviteToken]);
 
   useEffect(() => {
     setLoadState("loading");
@@ -833,6 +1043,7 @@ export default function RoomPage() {
 
     if (!roomId) {
       setHostPreparation(null);
+      setInviteContext(null);
       setLoadError(
         "Identifiant de salle invalide. Retournez à la création pour recommencer.",
       );
@@ -842,48 +1053,105 @@ export default function RoomPage() {
 
     const preparation = loadHostPreparation(roomId);
     if (!preparation) {
+      if (!inviteTokenResolved) {
+        return;
+      }
+
+      if (inviteGrid) {
+        setHostPreparation(null);
+        setInviteContext({
+          hostId: derivedHostId,
+          hostName: inviteHostNameFallback,
+          grid: inviteGrid,
+        });
+        setLoadState("ready");
+        return;
+      }
+
       setHostPreparation(null);
-      setLoadError(
-        "Cette salle n’a pas été trouvée sur cet appareil. Créez une nouvelle partie depuis la page de configuration.",
-      );
+      setInviteContext(null);
+      const message = inviteTokenError
+        ? `Le lien d’invitation est invalide : ${inviteTokenError}`
+        : "Cette salle n’a pas été trouvée sur cet appareil. Demandez à l’hôte de renvoyer un lien depuis sa salle.";
+      setLoadError(message);
       setLoadState("error");
       return;
     }
 
     setHostPreparation(preparation);
+    setInviteContext(null);
     setLoadState("ready");
-  }, [roomId]);
+  }, [
+    roomId,
+    inviteTokenResolved,
+    inviteGrid,
+    inviteTokenError,
+    derivedHostId,
+    inviteHostNameFallback,
+  ]);
 
   useEffect(() => {
-    if (loadState !== "ready" || !hostPreparation) {
+    if (loadState !== "ready") {
       setGameState(createInitialState());
       return;
     }
 
-    setActionError(null);
-    setGameState(() => {
-      try {
-        return reduceGameState(createInitialState(), {
-          type: "game/createLobby",
-          payload: {
-            grid: hostPreparation.grid,
-            host: {
-              id: hostPreparation.hostId,
-              name: hostPreparation.nickname,
+    if (hostPreparation) {
+      setActionError(null);
+      setGameState(() => {
+        try {
+          return reduceGameState(createInitialState(), {
+            type: "game/createLobby",
+            payload: {
+              grid: hostPreparation.grid,
+              host: {
+                id: hostPreparation.hostId,
+                name: hostPreparation.nickname,
+              },
             },
-          },
-        });
-      } catch (error) {
-        console.error("Impossible d'initialiser la salle.", error);
-        setActionError(
-          error instanceof Error
-            ? error.message
-            : "Impossible d'initialiser la salle de jeu.",
-        );
-        return createInitialState();
-      }
-    });
-  }, [hostPreparation, loadState]);
+          });
+        } catch (error) {
+          console.error("Impossible d'initialiser la salle.", error);
+          setActionError(
+            error instanceof Error
+              ? error.message
+              : "Impossible d'initialiser la salle de jeu.",
+          );
+          return createInitialState();
+        }
+      });
+      return;
+    }
+
+    if (inviteContext) {
+      setActionError(null);
+      setGameState(() => {
+        try {
+          return reduceGameState(createInitialState(), {
+            type: "game/createLobby",
+            payload: {
+              grid: inviteContext.grid,
+              host: {
+                id: inviteContext.hostId,
+                name: inviteContext.hostName,
+              },
+            },
+          });
+        } catch (error) {
+          console.error("Impossible d'initialiser la salle.", error);
+          setActionError(
+            error instanceof Error
+              ? error.message
+              : "Impossible d'initialiser la salle de jeu.",
+          );
+          return createInitialState();
+        }
+      });
+      return;
+    }
+
+    setGameState(createInitialState());
+  }, [hostPreparation, inviteContext, loadState]);
 
   useEffect(() => {
     if (!actionError) {
@@ -909,7 +1177,35 @@ export default function RoomPage() {
   }, []);
 
   const players = useMemo(() => selectPlayers(gameState), [gameState]);
-  const localPlayerId = hostPreparation?.hostId ?? null;
+  useEffect(() => {
+    if (hostPreparation) {
+      if (localGuestName !== null) {
+        setLocalGuestName(null);
+      }
+      return;
+    }
+    if (!inviteContext) {
+      if (localGuestName !== null) {
+        setLocalGuestName(null);
+      }
+      return;
+    }
+    const guestPlayer = players.find((player) => player.id === localGuestId);
+    if (guestPlayer) {
+      if (guestPlayer.name !== localGuestName) {
+        setLocalGuestName(guestPlayer.name);
+      }
+      return;
+    }
+    if (localGuestName !== null) {
+      setLocalGuestName(null);
+    }
+  }, [players, hostPreparation, inviteContext, localGuestId, localGuestName]);
+  const localPlayerId = hostPreparation
+    ? hostPreparation.hostId
+    : localGuestName
+      ? localGuestId
+      : null;
   const localPlayer = useMemo(() => {
     if (!localPlayerId) {
       return null;
@@ -932,10 +1228,13 @@ export default function RoomPage() {
 
   const grid = useMemo(() => {
     if (gameState.status === GameStatus.Idle) {
-      return hostPreparation?.grid ?? null;
+      if (hostPreparation) {
+        return hostPreparation.grid;
+      }
+      return inviteContext?.grid ?? null;
     }
     return gameState.grid;
-  }, [gameState, hostPreparation]);
+  }, [gameState, hostPreparation, inviteContext]);
 
   const cardLookup = useMemo(() => {
     if (!grid) {
@@ -967,6 +1266,23 @@ export default function RoomPage() {
     [players, gameState, localPlayerId, activePlayerId],
   );
 
+  const hostIdentityForInvite = useMemo(() => {
+    if (hostPreparation) {
+      return { id: hostPreparation.hostId, name: hostPreparation.nickname };
+    }
+    if (inviteContext) {
+      return { id: inviteContext.hostId, name: inviteContext.hostName };
+    }
+    return null;
+  }, [hostPreparation, inviteContext]);
+
+  const normalizedRoomId = roomId ? roomId : null;
+  const canShareInvite = Boolean(hostPreparation);
+  const isInvitee = !hostPreparation && inviteContext !== null;
+  const hasJoinedAsGuest = Boolean(localGuestName);
+  const shouldShowJoinCard =
+    isInvitee && !hasJoinedAsGuest && gameState.status === GameStatus.Lobby;
+
   const canHostStart =
     localPlayer?.role === PlayerRole.Host &&
     gameState.status === GameStatus.Lobby;
@@ -975,6 +1291,27 @@ export default function RoomPage() {
     gameState.status === GameStatus.Playing &&
     Boolean(localPlayer) &&
     activePlayerId === localPlayer?.id;
+
+  const handleJoinAsGuest = useCallback(
+    (nickname: string) => {
+      const trimmed = nickname.trim();
+      if (!trimmed) {
+        throw new Error(
+          "Veuillez renseigner un pseudo pour rejoindre la salle.",
+        );
+      }
+      setIsJoiningLobby(true);
+      try {
+        applyGameAction({
+          type: "game/joinLobby",
+          payload: { player: { id: localGuestId, name: trimmed } },
+        });
+      } finally {
+        setIsJoiningLobby(false);
+      }
+    },
+    [applyGameAction, localGuestId],
+  );
 
   const handleSelectSecret = useCallback(
     (playerId: string, cardId: string) => {
@@ -1136,7 +1473,21 @@ export default function RoomPage() {
         </p>
       </section>
 
-      <InviteLinkCard grid={hostPreparation?.grid ?? null} />
+      <InviteLinkCard
+        grid={grid}
+        roomId={normalizedRoomId}
+        host={hostIdentityForInvite}
+        canShare={canShareInvite}
+      />
+
+      {shouldShowJoinCard && hostIdentityForInvite ? (
+        <JoinAsGuestCard
+          hostName={hostIdentityForInvite.name}
+          onJoin={handleJoinAsGuest}
+          disabled={isJoiningLobby}
+          isSubmitting={isJoiningLobby}
+        />
+      ) : null}
 
       <ParticipantBanner
         players={playerSummaries}

@@ -78,9 +78,29 @@ export function decodeGridFromToken(token: string): ShareableGridPayload {
  * Builds a full invite URL including the `#/token` fragment.
  * The origin is normalised to avoid accidental double slashes.
  */
-export function buildInviteUrl(origin: string, token: string): string {
+export interface InviteMetadata {
+  roomId: string;
+  hostId: string;
+  hostName: string;
+}
+
+export function buildInviteUrl(
+  origin: string,
+  metadata: InviteMetadata,
+  token: string,
+): string {
   const trimmedOrigin = origin.replace(/\/$/, "");
-  return `${trimmedOrigin}/join#${token}`;
+  const url = new URL(
+    `${trimmedOrigin}/room/${encodeURIComponent(metadata.roomId)}`,
+  );
+  url.searchParams.set("hostId", metadata.hostId);
+  const hostName = metadata.hostName.trim();
+  if (hostName) {
+    url.searchParams.set("hostName", hostName);
+  }
+  url.searchParams.set("role", "guest");
+  url.hash = token;
+  return url.toString();
 }
 
 /**
