@@ -8,6 +8,7 @@ import {
   GridEditor,
   type GridEditorHandle,
 } from "@/components/editor/GridEditor";
+import { NicknameInput } from "@/components/NicknameInput";
 import { Button } from "@/components/ui/button";
 import type { Grid } from "@/lib/game/types";
 import {
@@ -104,89 +105,78 @@ export default function CreatePage() {
   };
 
   return (
-    <div className="flex flex-col gap-10">
-      <section className="space-y-5">
-        <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
-          <SparklesIcon aria-hidden="true" className="size-4" />
-          Configuration de la grille
-        </div>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Créez votre plateau KeyS personnalisé
-        </h1>
-        <p className="text-base text-muted-foreground sm:text-lg">
-          Personnalisez vos cartes depuis l’aperçu interactif puis partagez
-          votre salle en un instant. Le lien d’invitation s’affichera une fois
-          la préparation terminée.
-        </p>
-        <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <LayoutGridIcon
-              aria-hidden="true"
-              className="size-4 text-primary"
-            />
-            Dimensions dynamiques (2 à 8 cases par côté)
-          </div>
-          <div className="flex items-center gap-2">
-            <ImageIcon aria-hidden="true" className="size-4 text-primary" />
-            Images locales ou via URL publique
-          </div>
-        </div>
-      </section>
-
-      <section className="space-y-4">
-        <div className="space-y-2">
-          <label
-            htmlFor="nickname"
-            className="text-sm font-medium text-foreground"
-          >
-            Votre pseudo (partagé avec les autres participants)
-          </label>
-          <input
-            id="nickname"
-            name="nickname"
-            value={nickname}
-            onChange={(event) => {
-              setNickname(event.target.value);
-              setStartError(null);
-            }}
-            onBlur={() => setNicknameTouched(true)}
-            required
-            maxLength={40}
-            className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            placeholder="Hôte de la partie"
-            autoComplete="off"
-          />
-          {nicknameTouched && !nickname.trim() ? (
-            <p className="text-sm text-destructive">
-              Un pseudo est requis pour identifier chaque participant.
+    <div className="flex min-h-svh flex-col bg-background">
+      <main className="flex-1">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-4 pb-24 pt-10 sm:px-6 sm:pb-16 lg:px-8">
+          <section className="space-y-5">
+            <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+              <SparklesIcon aria-hidden="true" className="size-4" />
+              Configuration de la grille
+            </div>
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              Créez votre plateau KeyS personnalisé
+            </h1>
+            <p className="text-base text-muted-foreground sm:text-lg">
+              Personnalisez vos cartes depuis l’aperçu interactif puis partagez
+              votre salle en un instant. Le lien d’invitation s’affichera une
+              fois la préparation terminée.
             </p>
-          ) : null}
+            <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <LayoutGridIcon
+                  aria-hidden="true"
+                  className="size-4 text-primary"
+                />
+                Dimensions dynamiques (2 à 8 cases par côté)
+              </div>
+              <div className="flex items-center gap-2">
+                <ImageIcon aria-hidden="true" className="size-4 text-primary" />
+                Images locales ou via URL publique
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <NicknameInput
+              inputId="nickname"
+              value={nickname}
+              onValueChange={(nextValue) => {
+                setNickname(nextValue);
+                setStartError(null);
+              }}
+              onBlur={() => setNicknameTouched(true)}
+              showValidationFeedback={nicknameTouched}
+              description="Ce pseudo sera visible par les joueurs et les spectateurs pendant la partie. Vous pourrez inviter vos amis après avoir lancé la salle."
+              autoComplete="nickname"
+            />
+          </section>
+
+          <GridEditor ref={gridEditorRef} />
         </div>
+      </main>
 
-        <p className="text-sm text-muted-foreground">
-          Ce pseudo sera visible par les joueurs et les spectateurs pendant la
-          partie. Vous pourrez inviter vos amis après avoir lancé la salle.
-        </p>
-      </section>
-
-      <GridEditor ref={gridEditorRef} />
-
-      <section className="space-y-3">
-        {startError ? (
-          <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {startError}
-          </div>
-        ) : null}
-        <Button
-          type="button"
-          size="lg"
-          className="w-full sm:w-auto"
-          onClick={handleStartGame}
-          disabled={isStarting}
-        >
-          {isStarting ? "Création de la salle…" : "Démarrer la partie"}
-        </Button>
-      </section>
+      <div className="sticky bottom-0 z-20 border-t border-border/70 bg-background/95 px-4 py-4 shadow-[0_-12px_24px_-20px_rgba(15,23,42,0.45)] backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:relative sm:border-t-0 sm:bg-transparent sm:px-6 sm:py-8 sm:shadow-none sm:backdrop-blur-none lg:px-8">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+          {startError ? (
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive sm:flex-1"
+            >
+              {startError}
+            </div>
+          ) : null}
+          <Button
+            type="button"
+            size="lg"
+            className="w-full sm:w-auto sm:min-w-[14rem]"
+            onClick={handleStartGame}
+            disabled={isStarting}
+          >
+            {isStarting ? "Création de la salle…" : "Démarrer la partie"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
