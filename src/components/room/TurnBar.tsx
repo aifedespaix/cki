@@ -95,7 +95,7 @@ function TurnBar({
   return (
     <div
       className={cn(
-        "sticky bottom-4 z-20 w-full", // anchor near bottom by default
+        "sticky bottom-4 z-20 w-full mobile-nav-offset", // anchor near bottom by default while keeping distance from mobile nav
         className,
       )}
     >

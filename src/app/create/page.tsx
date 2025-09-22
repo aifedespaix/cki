@@ -155,7 +155,7 @@ export default function CreatePage() {
         </div>
       </main>
 
-      <div className="sticky bottom-0 z-20 border-t border-border/70 bg-background/95 px-4 py-4 shadow-[0_-12px_24px_-20px_rgba(15,23,42,0.45)] backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:relative sm:border-t-0 sm:bg-transparent sm:px-6 sm:py-8 sm:shadow-none sm:backdrop-blur-none lg:px-8">
+      <div className="sticky bottom-0 z-20 border-t border-border/70 bg-background/95 px-4 pt-4 shadow-[0_-12px_24px_-20px_rgba(15,23,42,0.45)] backdrop-blur mobile-nav-offset [--mobile-nav-offset-extra:1rem] supports-[backdrop-filter]:bg-background/80 sm:relative sm:border-t-0 sm:bg-transparent sm:px-6 sm:pt-8 sm:[--mobile-nav-offset-extra:2rem] sm:shadow-none sm:backdrop-blur-none lg:px-8">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
           {startError ? (
             <div
