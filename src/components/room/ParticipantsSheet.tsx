@@ -47,6 +47,7 @@ type ParticipantsSheetProps = {
   readonly onPromoteSpectator?: (spectatorId: string) => void;
   readonly onKickSpectator?: (spectatorId: string) => void;
   readonly onKickPlayer?: (playerId: string) => void;
+  readonly triggerClassName?: string;
 };
 
 const roleLabels: Record<PlayerRole, string> = {
@@ -214,6 +215,7 @@ function ParticipantsSheet({
   onPromoteSpectator,
   onKickSpectator,
   onKickPlayer,
+  triggerClassName,
 }: ParticipantsSheetProps) {
   const playerCount = players.length;
   const hostPlayer = useMemo(
@@ -232,7 +234,7 @@ function ParticipantsSheet({
           type="button"
           variant="outline"
           size="sm"
-          className="flex items-center gap-2"
+          className={cn("flex items-center gap-2", triggerClassName)}
         >
           <UsersIcon aria-hidden className="size-4" />
           Participants ({playerCount}/2)

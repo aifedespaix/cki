@@ -124,3 +124,60 @@
 .page-shell:has(> .full-height-page) {
   padding-bottom: 0;
 }
+
+html.room-screen-html,
+body.room-screen-active {
+  height: 100dvh;
+}
+
+body.room-screen-active {
+  overflow: hidden;
+  overscroll-behavior: none;
+  background-color: var(--background);
+}
+
+.room-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--background);
+  padding: 16px;
+  padding-top: calc(env(safe-area-inset-top) + 16px);
+  padding-right: calc(env(safe-area-inset-right) + 16px);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 16px);
+  padding-left: calc(env(safe-area-inset-left) + 16px);
+}
+
+@media (min-width: 768px) {
+  .room-screen {
+    gap: 1.5rem;
+  }
+}
+
+body.room-screen-active main {
+  max-width: none;
+  width: 100%;
+  padding: 0;
+  display: flex;
+  flex: 1 1 auto;
+}
+
+body.room-screen-active .page-shell {
+  padding: 0;
+  flex: 1 1 auto;
+  display: flex;
+}
+
+body.room-screen-active .page-shell > .room-screen {
+  flex: 1 1 auto;
+}
+
+body.room-screen-active header,
+body.room-screen-active footer,
+body.room-screen-active [data-mobile-nav="true"] {
+  display: none;
+}
