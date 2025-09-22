@@ -132,6 +132,7 @@ const playingStateSchemaInternal: z.ZodType<PlayingState> = z
     players: z.array(playerSchema).length(2),
     activePlayerId: z.string().min(1),
     turn: z.number().int().positive(),
+    lastGuessResult: guessResultSchema.nullable(),
   })
   .strict()
   .superRefine((state, ctx) => {

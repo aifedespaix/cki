@@ -61,6 +61,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/use-toast";
 import { useRenderMetrics } from "@/lib/debug/renderMetrics";
 import {
   canStartGame,
@@ -170,6 +171,7 @@ export default function RoomPage() {
   const [roleSelectionError, setRoleSelectionError] = useState<string | null>(
     null,
   );
+  const { toast } = useToast();
   const resolvedPeerRole = useMemo<PeerRole | null>(() => {
     if (loadState !== "ready") {
       return null;
@@ -223,6 +225,7 @@ export default function RoomPage() {
   );
   const replicatorRef = useRef<ActionReplicator | null>(null);
   const pendingRemoteActionsRef = useRef<RemoteActionQueue | null>(null);
+  const lastGuessNotificationKeyRef = useRef<string | null>(null);
   if (!pendingRemoteActionsRef.current) {
     pendingRemoteActionsRef.current = new RemoteActionQueue();
   }
@@ -743,6 +746,52 @@ export default function RoomPage() {
     }
     return new Map(grid.cards.map((card) => [card.id, card] as const));
   }, [grid]);
+
+  const lastGuessFailureSummary = useMemo(() => {
+    if (gameState.status !== GameStatus.Playing) {
+      return null;
+    }
+    const result = gameState.lastGuessResult;
+    if (!result || result.correct) {
+      return null;
+    }
+    const guesserName =
+      players.find((player) => player.id === result.guesserId)?.name ??
+      "Un joueur";
+    const targetName =
+      players.find((player) => player.id === result.targetPlayerId)?.name ??
+      "l’adversaire";
+    const cardLabel = cardLookup.get(result.cardId)?.label ?? "cette carte";
+
+    return {
+      guesserName,
+      targetName,
+      cardLabel,
+    };
+  }, [cardLookup, gameState, players]);
+
+  useEffect(() => {
+    if (gameState.status !== GameStatus.Playing) {
+      lastGuessNotificationKeyRef.current = null;
+      return;
+    }
+    const result = gameState.lastGuessResult;
+    if (!result || result.correct || !lastGuessFailureSummary) {
+      lastGuessNotificationKeyRef.current = null;
+      return;
+    }
+
+    const guessKey = `${gameState.turn}:${result.guesserId}:${result.cardId}`;
+    if (lastGuessNotificationKeyRef.current === guessKey) {
+      return;
+    }
+
+    toast({
+      title: "Proposition incorrecte",
+      description: `${lastGuessFailureSummary.guesserName} a annoncé ${lastGuessFailureSummary.cardLabel}, mais ${lastGuessFailureSummary.targetName} protégeait une autre carte.`,
+    });
+    lastGuessNotificationKeyRef.current = guessKey;
+  }, [gameState, lastGuessFailureSummary, toast]);
 
   const activePlayer = useMemo(
     () => selectActivePlayer(gameState),
@@ -1611,6 +1660,7 @@ export default function RoomPage() {
         canEndTurn={canEndTurnButton}
         onEndTurn={canEndTurnButton ? handleEndTurn : undefined}
         hostControls={turnBarHostControls}
+        lastGuessFailure={lastGuessFailureSummary}
         className="relative w-full"
       />
       <Dialog

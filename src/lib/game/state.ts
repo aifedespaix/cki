@@ -272,6 +272,7 @@ export const reduceGameState = (
         })),
         activePlayerId: startingPlayer.id,
         turn: 1,
+        lastGuessResult: null,
       } satisfies PlayingState;
     }
 
@@ -372,6 +373,7 @@ export const reduceGameState = (
         action,
         "Only the active player can guess the opponent card",
       );
+      requireTwoPlayers(playingState.players, action);
       assert(
         playerId !== targetPlayerId,
         action,
@@ -399,11 +401,6 @@ export const reduceGameState = (
       );
 
       const correct = target.secretCardId === cardId;
-      const winnerId = correct ? playerId : targetPlayerId;
-      const reason = correct
-        ? GameConclusionReason.CorrectGuess
-        : GameConclusionReason.IncorrectGuess;
-
       const finalGuess: GuessResult = {
         guesserId: playerId,
         targetPlayerId,
@@ -411,7 +408,47 @@ export const reduceGameState = (
         correct,
       };
 
-      return toFinishedState(playingState, winnerId, reason, finalGuess);
+      if (correct) {
+        return toFinishedState(
+          playingState,
+          playerId,
+          GameConclusionReason.CorrectGuess,
+          finalGuess,
+        );
+      }
+
+      const guesserIndex = playingState.players.findIndex(
+        (player) => player.id === playerId,
+      );
+      assert(
+        guesserIndex !== -1,
+        action,
+        `Player "${playerId}" is not part of the match`,
+      );
+
+      const updatedGuesser: Player = {
+        ...guesser,
+        flippedCardIds: [],
+      };
+
+      const players = playingState.players.map((current, index) =>
+        index === guesserIndex ? updatedGuesser : current,
+      );
+
+      const nextPlayerId = determineNextPlayerId(playingState);
+      assert(
+        nextPlayerId !== playingState.activePlayerId,
+        action,
+        "Cannot pass the turn to the same player",
+      );
+
+      return {
+        ...playingState,
+        players,
+        activePlayerId: nextPlayerId,
+        turn: playingState.turn + 1,
+        lastGuessResult: finalGuess,
+      } satisfies PlayingState;
     }
 
     case "game/reset":

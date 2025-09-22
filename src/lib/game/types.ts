@@ -106,6 +106,8 @@ export interface PlayingState {
   activePlayerId: string;
   /** Sequential turn counter starting at 1. */
   turn: number;
+  /** Result of the most recent guess attempt while the match is active. */
+  lastGuessResult: GuessResult | null;
 }
 
 export interface FinishedState {
