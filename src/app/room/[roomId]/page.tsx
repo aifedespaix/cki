@@ -52,6 +52,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRenderMetrics } from "@/lib/debug/renderMetrics";
 import {
@@ -87,6 +95,7 @@ import { decodeGridFromToken } from "@/lib/share/url";
 import type { HostPreparationRecord } from "@/lib/storage/session";
 import { loadHostPreparation } from "@/lib/storage/session";
 import { cn, createRandomId } from "@/lib/utils";
+import { analyseGuessConfirmationContext } from "./guessConfirmation";
 import {
   type RoomPeerCreationConfig,
   useRoomPeerRuntime,
@@ -110,6 +119,13 @@ interface InviteContext {
   hostId: string;
   hostName: string;
   grid: Grid;
+}
+
+interface GuessConfirmationRequest {
+  playerId: string;
+  targetPlayerId: string;
+  candidateCardId: string;
+  lastMaskedCardId: string;
 }
 
 export default function RoomPage() {
@@ -136,6 +152,8 @@ export default function RoomPage() {
   >(null);
   const [hasPromptedSecretSelection, setHasPromptedSecretSelection] =
     useState(false);
+  const [guessConfirmationRequest, setGuessConfirmationRequest] =
+    useState<GuessConfirmationRequest | null>(null);
   const [inviteContext, setInviteContext] = useState<InviteContext | null>(
     null,
   );
@@ -654,6 +672,7 @@ export default function RoomPage() {
       players.find((player) => player.id === effectiveLocalPlayerId) ?? null
     );
   }, [players, effectiveLocalPlayerId]);
+  const localPlayerId = localPlayer?.id ?? null;
   const isSpectatorView = viewAsSpectator || !localPlayer;
   const hasLocalPlayer = Boolean(localPlayer);
 
@@ -907,12 +926,50 @@ export default function RoomPage() {
 
   const handleToggleCard = useCallback(
     (playerId: string, cardId: string) => {
+      const player = players.find((entry) => entry.id === playerId) ?? null;
+      const analysis = analyseGuessConfirmationContext(grid, player, cardId);
+
       applyGameAction({
         type: "turn/flipCard",
         payload: { playerId, cardId },
       });
+
+      if (
+        !analysis ||
+        analysis.cardWasHiddenBeforeToggle ||
+        !localPlayerId ||
+        localPlayerId !== playerId ||
+        gameState.status !== GameStatus.Playing ||
+        activePlayerId !== playerId
+      ) {
+        return;
+      }
+
+      const remainingVisibleCardId = analysis.remainingVisibleCardId;
+      if (!remainingVisibleCardId) {
+        return;
+      }
+
+      const targetPlayer = players.find((entry) => entry.id !== playerId);
+      if (!targetPlayer) {
+        return;
+      }
+
+      setGuessConfirmationRequest({
+        playerId,
+        targetPlayerId: targetPlayer.id,
+        candidateCardId: remainingVisibleCardId,
+        lastMaskedCardId: cardId,
+      });
     },
-    [applyGameAction],
+    [
+      activePlayerId,
+      applyGameAction,
+      gameState.status,
+      grid,
+      localPlayerId,
+      players,
+    ],
   );
 
   const handlePromoteSpectator = useCallback(
@@ -962,6 +1019,69 @@ export default function RoomPage() {
       players.length,
       spectators,
     ],
+  );
+
+  const handleConfirmGuess = useCallback(() => {
+    if (!guessConfirmationRequest) {
+      return;
+    }
+    const { playerId, targetPlayerId, candidateCardId } =
+      guessConfirmationRequest;
+    if (!localPlayerId || localPlayerId !== playerId) {
+      setGuessConfirmationRequest(null);
+      return;
+    }
+    applyGameAction({
+      type: "turn/guess",
+      payload: {
+        playerId,
+        targetPlayerId,
+        cardId: candidateCardId,
+      },
+    });
+    setGuessConfirmationRequest(null);
+  }, [applyGameAction, guessConfirmationRequest, localPlayerId]);
+
+  const handleCancelGuess = useCallback(() => {
+    let revertError: unknown = null;
+    setGuessConfirmationRequest((current) => {
+      if (!current) {
+        return null;
+      }
+      if (localPlayerId && localPlayerId === current.playerId) {
+        const player =
+          players.find((entry) => entry.id === current.playerId) ?? null;
+        const shouldRestore =
+          player?.flippedCardIds.includes(current.lastMaskedCardId) ?? false;
+        if (shouldRestore) {
+          try {
+            applyGameAction({
+              type: "turn/flipCard",
+              payload: {
+                playerId: current.playerId,
+                cardId: current.lastMaskedCardId,
+              },
+            });
+          } catch (error) {
+            revertError = error;
+            return current;
+          }
+        }
+      }
+      return null;
+    });
+    if (revertError) {
+      throw revertError;
+    }
+  }, [applyGameAction, localPlayerId, players]);
+
+  const handleGuessDialogOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        handleCancelGuess();
+      }
+    },
+    [handleCancelGuess],
   );
 
   const handleKickSpectator = useCallback(
@@ -1093,6 +1213,28 @@ export default function RoomPage() {
   const utilityPanelStyle = isBoardsStacked
     ? { height: "clamp(240px, 35dvh, 360px)" }
     : { width: "clamp(280px, 28vw, 360px)" };
+
+  const guessConfirmationCandidateCard = useMemo(() => {
+    if (!guessConfirmationRequest) {
+      return null;
+    }
+    return cardLookup.get(guessConfirmationRequest.candidateCardId) ?? null;
+  }, [cardLookup, guessConfirmationRequest]);
+  const guessConfirmationTargetPlayer = useMemo(() => {
+    if (!guessConfirmationRequest) {
+      return null;
+    }
+    return (
+      players.find(
+        (player) => player.id === guessConfirmationRequest.targetPlayerId,
+      ) ?? null
+    );
+  }, [guessConfirmationRequest, players]);
+  const isGuessConfirmationOpen = Boolean(guessConfirmationRequest);
+  const guessConfirmationTargetName =
+    guessConfirmationTargetPlayer?.name ?? "l’adversaire";
+  const guessConfirmationCandidateLabel =
+    guessConfirmationCandidateCard?.label ?? "ce personnage";
 
   const isLoading = loadState === "loading" || loadState === "idle";
   if (isLoading) {
@@ -1471,6 +1613,50 @@ export default function RoomPage() {
         hostControls={turnBarHostControls}
         className="relative w-full"
       />
+      <Dialog
+        open={isGuessConfirmationOpen}
+        onOpenChange={handleGuessDialogOpenChange}
+      >
+        <DialogContent className="max-w-md space-y-6">
+          <DialogHeader>
+            <DialogTitle>Voulez-vous valider ce personnage ?</DialogTitle>
+            <DialogDescription>
+              Il ne reste qu’une carte visible sur votre plateau. Valider
+              l’envoi confirmera « {guessConfirmationCandidateLabel} » comme
+              proposition face à {guessConfirmationTargetName}. Sélectionnez «
+              Non » pour révéler à nouveau la carte masquée et poursuivre votre
+              tri.
+            </DialogDescription>
+          </DialogHeader>
+          {guessConfirmationCandidateCard ? (
+            <div className="space-y-2 rounded-lg border border-border/60 bg-muted/30 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Carte pressentie
+              </p>
+              <p className="text-base font-semibold text-foreground">
+                {guessConfirmationCandidateCard.label}
+              </p>
+              {guessConfirmationCandidateCard.description ? (
+                <p className="text-sm text-muted-foreground">
+                  {guessConfirmationCandidateCard.description}
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Cette carte ne possède pas de description supplémentaire.
+                </p>
+              )}
+            </div>
+          ) : null}
+          <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={handleCancelGuess}>
+              Non, continuer
+            </Button>
+            <Button type="button" onClick={handleConfirmGuess}>
+              Oui, annoncer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <TargetSelectionModal
         cards={secretSelectionCards}
         isOpen={isSecretSelectionOpen}

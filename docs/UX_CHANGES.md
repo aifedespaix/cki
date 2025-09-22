@@ -133,7 +133,14 @@ Textual wireframes describe the content and interaction stack. Use them as accep
    - Step list: choose opponent tile → confirm → broadcast message.
    - Grid preview 3 columns, uses same tile component as board but in compact mode.
    - Footer: destructive button “Annuler”, primary button “Valider la cible”.
-5. **Turn bar** (anchored bottom, full-width)
+5. **Guess confirmation modal** (auto-triggered when only one card stays visible)
+   - Title: “Voulez-vous valider ce personnage ?”. Description reminds players that only one card is visible and names the remaining opponent.
+   - Body: recap block with the candidate card label and description so the player can double-check before committing.
+   - Footer actions:
+     - **“Oui, annoncer”** sends the guess (`turn/guess`) to the opponent immediately.
+     - **“Non, continuer”** flips back the previously hidden card so the player returns to multi-card state.
+   - Closing via escape/outside tap behaves like “Non, continuer” to avoid accidental lock-in.
+6. **Turn bar** (anchored bottom, full-width)
    - Left: textual status (“À vous de jouer”, “Patientez…”, “Victoire !”).
    - Center: action buttons contextual to role (e.g., “Brasser le paquet”, “Marquer comme trouvé”).
    - Right: network feedback dot + tooltip for latency.
