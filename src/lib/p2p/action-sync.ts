@@ -23,7 +23,10 @@ export interface ActionReplicatorOptions {
   shouldDeferLocalApplication?: (action: Action) => boolean;
   onApply: (action: Action, metadata: ActionApplicationMetadata) => void;
   onError?: (error: Error, context: ActionErrorContext) => void;
-  onAcknowledged?: (actionId: string, payload: GameActionMessagePayload) => void;
+  onAcknowledged?: (
+    actionId: string,
+    payload: GameActionMessagePayload,
+  ) => void;
   generateActionId?: () => string;
 }
 
@@ -186,4 +189,3 @@ export const createActionReplicator = (
     pendingActionIds,
   };
 };
-
