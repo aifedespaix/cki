@@ -185,7 +185,7 @@ export function PlayerBoard({
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             <ul
-              className="grid h-full list-none gap-2 overflow-auto pr-1 sm:gap-3"
+              className="grid h-full list-none gap-2 overflow-hidden pr-1 sm:gap-3"
               style={{ gridTemplateColumns: templateColumns }}
               aria-label={`Plateau de ${player.name}`}
             >

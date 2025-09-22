@@ -12,6 +12,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import type { GameStatus, Grid } from "@/lib/game/types";
+import { cn } from "@/lib/utils";
 
 import { formatStatusLabel } from "./roomLabels";
 
@@ -20,6 +21,7 @@ interface RoomInformationDialogProps {
   grid: Grid;
   status: GameStatus;
   hostName: string | null;
+  triggerClassName?: string;
 }
 
 export function RoomInformationDialog({
@@ -27,6 +29,7 @@ export function RoomInformationDialog({
   grid,
   status,
   hostName,
+  triggerClassName,
 }: RoomInformationDialogProps) {
   return (
     <Dialog>
@@ -35,7 +38,7 @@ export function RoomInformationDialog({
           type="button"
           variant="outline"
           size="sm"
-          className="flex items-center gap-2"
+          className={cn("flex items-center gap-2", triggerClassName)}
         >
           <InfoIcon aria-hidden className="size-4" />
           Infos salle

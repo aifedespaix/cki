@@ -53,6 +53,7 @@ interface InviteDialogProps {
   canJoinAsPlayer: boolean;
   onJoin: (nickname: string) => void;
   isJoining: boolean;
+  triggerClassName?: string;
 }
 
 type JoinRole = "player" | "spectator";
@@ -74,6 +75,7 @@ export function InviteDialog({
   canJoinAsPlayer,
   onJoin,
   isJoining,
+  triggerClassName,
 }: InviteDialogProps) {
   const [origin, setOrigin] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<CopyStatus>("idle");
@@ -242,7 +244,7 @@ export function InviteDialog({
           type="button"
           variant="outline"
           size="sm"
-          className="flex items-center gap-2"
+          className={cn("flex items-center gap-2", triggerClassName)}
         >
           <CopyIcon aria-hidden className="size-4" />
           Inviter

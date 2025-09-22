@@ -24,6 +24,7 @@ import {
   type HeaderActionState,
   useHeaderActionRegistration,
 } from "@/components/app/HeaderActionsContext";
+import { BoardsArea, type BoardsLayout } from "@/components/room/BoardsArea";
 import { FinalResultCard } from "@/components/room/FinalResultCard";
 import {
   type HostIdentitySummary,
@@ -84,7 +85,7 @@ import { RemoteActionQueue } from "@/lib/p2p/remote-action-queue";
 import { decodeGridFromToken } from "@/lib/share/url";
 import type { HostPreparationRecord } from "@/lib/storage/session";
 import { loadHostPreparation } from "@/lib/storage/session";
-import { createRandomId } from "@/lib/utils";
+import { cn, createRandomId } from "@/lib/utils";
 import {
   type RoomPeerCreationConfig,
   useRoomPeerRuntime,
@@ -652,6 +653,7 @@ export default function RoomPage() {
     );
   }, [players, effectiveLocalPlayerId]);
   const isSpectatorView = viewAsSpectator || !localPlayer;
+  const hasLocalPlayer = Boolean(localPlayer);
 
   const orderedPlayers = useMemo(() => {
     if (!effectiveLocalPlayerId) {
@@ -778,6 +780,22 @@ export default function RoomPage() {
     [handleLeave],
   );
   useHeaderActionRegistration(leaveHeaderAction);
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const htmlElement = document.documentElement;
+    const bodyElement = document.body;
+    if (!bodyElement || !htmlElement) {
+      return;
+    }
+    bodyElement.classList.add("room-screen-active");
+    htmlElement.classList.add("room-screen-html");
+    return () => {
+      bodyElement.classList.remove("room-screen-active");
+      htmlElement.classList.remove("room-screen-html");
+    };
+  }, []);
   const isInvitee = !hostPreparation && inviteContext !== null;
   const hasJoinedAsGuest = Boolean(localGuestName);
   const shouldShowJoinCard =
@@ -993,6 +1011,87 @@ export default function RoomPage() {
     });
   }, [applyGameAction, localPlayer]);
 
+  const boardItems = useMemo(() => {
+    if (!grid) {
+      return [] as Array<{ key: string; content: ReactNode }>;
+    }
+
+    const items: Array<{ key: string; content: ReactNode }> =
+      orderedPlayers.map((player) => {
+        const isLocal = localPlayer?.id === player.id;
+        const accent: PlayerBoardAccent = isLocal
+          ? "self"
+          : hasLocalPlayer
+            ? "opponent"
+            : "neutral";
+        const hiddenCardIds = new Set(player.flippedCardIds);
+        const secretCard = player.secretCardId
+          ? (cardLookup.get(player.secretCardId) ?? null)
+          : null;
+        const allowSecretSelection =
+          isLocal && gameState.status === GameStatus.Lobby;
+        const allowCardToggle =
+          isLocal &&
+          gameState.status === GameStatus.Playing &&
+          activePlayerId === player.id;
+        const showSecretCard = isSpectatorView || isLocal;
+        const onRequestSecretSelection = allowSecretSelection
+          ? () => setSecretSelectionPlayerId(player.id)
+          : undefined;
+
+        return {
+          key: `player-${player.id}`,
+          content: (
+            <PlayerBoard
+              player={player}
+              grid={grid}
+              accent={accent}
+              hiddenCardIds={hiddenCardIds}
+              secretCard={secretCard}
+              showSecretCard={showSecretCard}
+              allowSecretSelection={allowSecretSelection}
+              allowCardToggle={allowCardToggle}
+              onRequestSecretSelection={onRequestSecretSelection}
+              onToggleCard={(cardId) => handleToggleCard(player.id, cardId)}
+              status={gameState.status}
+              isLocal={isLocal}
+              isActiveTurn={activePlayerId === player.id}
+              isSpectatorView={isSpectatorView}
+              ready={Boolean(player.secretCardId)}
+            />
+          ),
+        };
+      });
+
+    while (items.length < 2) {
+      items.push({
+        key: `placeholder-${items.length}`,
+        content: <MissingOpponentBoard grid={grid} />,
+      });
+    }
+
+    return items;
+  }, [
+    orderedPlayers,
+    localPlayer?.id,
+    hasLocalPlayer,
+    grid,
+    cardLookup,
+    gameState.status,
+    isSpectatorView,
+    activePlayerId,
+    handleToggleCard,
+  ]);
+
+  const [boardsLayout, setBoardsLayout] = useState<BoardsLayout>("horizontal");
+  const handleBoardsLayoutChange = useCallback((layout: BoardsLayout) => {
+    setBoardsLayout((previous) => (previous === layout ? previous : layout));
+  }, []);
+  const isBoardsStacked = boardsLayout === "vertical";
+  const utilityPanelStyle = isBoardsStacked
+    ? { height: "clamp(240px, 35dvh, 360px)" }
+    : { width: "clamp(280px, 28vw, 360px)" };
+
   const isLoading = loadState === "loading" || loadState === "idle";
   if (isLoading) {
     return (
@@ -1139,65 +1238,6 @@ export default function RoomPage() {
     isLocalHost && gameState.status === GameStatus.Lobby && players.length < 2;
   const canKickPlayers = isLocalHost && gameState.status === GameStatus.Lobby;
 
-  const boardSections: ReactNode[] = orderedPlayers.map((player) => {
-    const isLocal = localPlayer?.id === player.id;
-    const accent: PlayerBoardAccent = isLocal
-      ? "self"
-      : localPlayer
-        ? "opponent"
-        : "neutral";
-    const hiddenCardIds = new Set(player.flippedCardIds);
-    const secretCard = player.secretCardId
-      ? (cardLookup.get(player.secretCardId) ?? null)
-      : null;
-    const allowSecretSelection =
-      isLocal && gameState.status === GameStatus.Lobby;
-    const allowCardToggle =
-      isLocal &&
-      gameState.status === GameStatus.Playing &&
-      activePlayerId === player.id;
-    const showSecretCard = isSpectatorView || isLocal;
-    const onRequestSecretSelection = allowSecretSelection
-      ? () => setSecretSelectionPlayerId(player.id)
-      : undefined;
-
-    return (
-      <section
-        key={`player-${player.id}`}
-        className="flex h-full min-h-0 flex-col overflow-hidden"
-      >
-        <PlayerBoard
-          player={player}
-          grid={grid}
-          accent={accent}
-          hiddenCardIds={hiddenCardIds}
-          secretCard={secretCard}
-          showSecretCard={showSecretCard}
-          allowSecretSelection={allowSecretSelection}
-          allowCardToggle={allowCardToggle}
-          onRequestSecretSelection={onRequestSecretSelection}
-          onToggleCard={(cardId) => handleToggleCard(player.id, cardId)}
-          status={gameState.status}
-          isLocal={isLocal}
-          isActiveTurn={activePlayerId === player.id}
-          isSpectatorView={isSpectatorView}
-          ready={Boolean(player.secretCardId)}
-        />
-      </section>
-    );
-  });
-
-  while (boardSections.length < 2) {
-    boardSections.push(
-      <section
-        key={`placeholder-${boardSections.length}`}
-        className="flex h-full min-h-0 flex-col overflow-hidden"
-      >
-        <MissingOpponentBoard grid={grid} />
-      </section>,
-    );
-  }
-
   const secretSelectionPlayer = secretSelectionPlayerId
     ? (players.find((player) => player.id === secretSelectionPlayerId) ?? null)
     : null;
@@ -1227,113 +1267,197 @@ export default function RoomPage() {
   } as const;
 
   return (
-    <div className="full-height-page flex h-full min-h-0 flex-1 flex-col gap-4 sm:gap-6">
-      <div className="grid h-full min-h-0 flex-1 gap-4 sm:gap-6 grid-rows-[2fr_3fr_3fr] lg:grid-cols-2 lg:grid-rows-[2fr_6fr]">
-        <section className="flex min-h-0 flex-col gap-6 overflow-y-auto rounded-2xl border border-border/70 bg-background/80 p-6 shadow-sm lg:col-span-2">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
-                <UsersIcon aria-hidden className="size-4" />
-                Salle « C ki ? »
-              </div>
-              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+    <div
+      className="room-screen full-height-page text-foreground"
+      data-boards-layout={boardsLayout}
+    >
+      <section className="rounded-3xl border border-border/70 bg-background/85 px-5 py-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+              <UsersIcon aria-hidden className="size-4" />
+              Salle « C ki ? »
+            </div>
+            <div className="space-y-1">
+              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
                 Salle {roomId}
               </h1>
-              <p className="text-base text-muted-foreground sm:text-lg">
-                Gérez les plateaux, les joueurs et le déroulement de la partie.
+              <p className="text-sm text-muted-foreground sm:text-base">
+                {grid.name} — {grid.rows} × {grid.columns} ({grid.cards.length}{" "}
+                cartes)
               </p>
             </div>
-            <div className="flex flex-wrap gap-2 sm:justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-2"
-                onClick={handleOpenRoleSelection}
-              >
-                <UserCogIcon aria-hidden className="size-4" />
-                Changer de rôle
-              </Button>
-              <ParticipantsSheet
-                players={playerSummaries}
-                spectators={spectators}
-                statusLabel={statusLabel}
-                turnLabel={turnLabel}
-                isHost={isLocalHost}
-                canPromoteSpectators={canPromoteSpectators}
-                canKickPlayers={canKickPlayers}
-                onPromoteSpectator={
-                  isLocalHost ? handlePromoteSpectator : undefined
-                }
-                onKickSpectator={isLocalHost ? handleKickSpectator : undefined}
-                onKickPlayer={isLocalHost ? handleKickPlayer : undefined}
-              />
-              <InviteDialog
-                grid={grid}
-                roomId={normalizedRoomId}
-                host={hostIdentityForInvite}
-                canShare={canShareInvite}
-                allowJoin={shouldShowJoinCard}
-                canJoinAsPlayer={canJoinAsPlayer}
-                onJoin={handleJoinAsGuest}
-                isJoining={isJoiningLobby}
-              />
-              <RoomInformationDialog
-                roomId={roomId}
-                grid={grid}
-                status={gameState.status}
-                hostName={hostPlayerName}
-              />
-            </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {summaryItems.map((item) => (
-              <div
-                key={item.key}
-                className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/20 p-3"
-              >
-                <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  {item.icon}
-                </span>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase text-muted-foreground">
-                    {item.label}
-                  </p>
-                  <p className="text-sm font-medium text-foreground">
-                    {item.value}
-                  </p>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-2"
+              onClick={handleOpenRoleSelection}
+            >
+              <UserCogIcon aria-hidden className="size-4" />
+              Changer de rôle
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="flex items-center gap-2"
+              onClick={handleLeave}
+            >
+              Quitter la salle
+            </Button>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-3 text-sm text-muted-foreground">
+          <span className="inline-flex items-center gap-2">
+            <TargetIcon aria-hidden className="size-4 text-primary" />
+            {statusLabel}
+          </span>
+          <span className="inline-flex items-center gap-2">
+            <TimerIcon aria-hidden className="size-4 text-primary" />
+            {turnLabel}
+          </span>
+          <span className="inline-flex items-center gap-2">
+            <EyeIcon aria-hidden className="size-4 text-primary" />
+            {spectators.length === 1
+              ? "1 spectateur"
+              : `${spectators.length} spectateurs`}
+          </span>
+        </div>
+      </section>
+      <div
+        className={cn(
+          "flex flex-1 min-h-0 gap-4 transition-[flex-direction] duration-300 ease-out",
+          isBoardsStacked ? "flex-col" : "flex-row",
+        )}
+      >
+        <div className="relative flex flex-1 min-h-0 items-center justify-center overflow-hidden rounded-3xl border border-border/70 bg-muted/20 shadow-inner">
+          <BoardsArea
+            boards={boardItems}
+            className="h-full w-full p-2 sm:p-4"
+            onLayoutChange={handleBoardsLayoutChange}
+          />
+        </div>
+        <aside
+          className={cn(
+            "utility-panel flex shrink-0 flex-col overflow-hidden rounded-3xl border border-border/70 bg-background/90 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/70",
+            isBoardsStacked ? "w-full" : undefined,
+          )}
+          style={utilityPanelStyle}
+        >
+          <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
+            <div className="space-y-6">
+              <section className="space-y-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Accès rapide
+                </h2>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start"
+                    onClick={handleOpenRoleSelection}
+                  >
+                    <UserCogIcon aria-hidden className="mr-2 size-4" />
+                    Rôles
+                  </Button>
+                  <ParticipantsSheet
+                    players={playerSummaries}
+                    spectators={spectators}
+                    statusLabel={statusLabel}
+                    turnLabel={turnLabel}
+                    isHost={isLocalHost}
+                    canPromoteSpectators={canPromoteSpectators}
+                    canKickPlayers={canKickPlayers}
+                    onPromoteSpectator={
+                      isLocalHost ? handlePromoteSpectator : undefined
+                    }
+                    onKickSpectator={
+                      isLocalHost ? handleKickSpectator : undefined
+                    }
+                    onKickPlayer={isLocalHost ? handleKickPlayer : undefined}
+                    triggerClassName="w-full justify-start"
+                  />
+                  <InviteDialog
+                    grid={grid}
+                    roomId={normalizedRoomId}
+                    host={hostIdentityForInvite}
+                    canShare={canShareInvite}
+                    allowJoin={shouldShowJoinCard}
+                    canJoinAsPlayer={canJoinAsPlayer}
+                    onJoin={handleJoinAsGuest}
+                    isJoining={isJoiningLobby}
+                    triggerClassName="w-full justify-start"
+                  />
+                  <RoomInformationDialog
+                    roomId={roomId}
+                    grid={grid}
+                    status={gameState.status}
+                    hostName={hostPlayerName}
+                    triggerClassName="w-full justify-start"
+                  />
                 </div>
-              </div>
-            ))}
+              </section>
+              <section className="space-y-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Résumé de la salle
+                </h2>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {summaryItems.map((item) => (
+                    <div
+                      key={item.key}
+                      className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/20 p-3"
+                    >
+                      <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        {item.icon}
+                      </span>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">
+                          {item.label}
+                        </p>
+                        <p className="text-sm font-medium text-foreground">
+                          {item.value}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+              {actionError ? (
+                <div
+                  className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                  role="alert"
+                >
+                  <AlertCircleIcon aria-hidden className="mt-0.5 size-4" />
+                  <span>{actionError}</span>
+                </div>
+              ) : null}
+              {canHostStart ? (
+                <div className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/30 p-4">
+                  <p className="text-sm text-muted-foreground">
+                    {startDisabled
+                      ? "Chaque joueur doit choisir une carte secrète avant de commencer."
+                      : "Lancez la partie pour démarrer le premier tour."}
+                  </p>
+                  <Button
+                    type="button"
+                    onClick={handleStartGame}
+                    disabled={startDisabled}
+                  >
+                    <PlayIcon aria-hidden className="mr-2 size-4" />
+                    Démarrer le match
+                  </Button>
+                </div>
+              ) : null}
+              {gameState.status === GameStatus.Finished ? (
+                <FinalResultCard state={gameState} cardLookup={cardLookup} />
+              ) : null}
+            </div>
           </div>
-          {actionError ? (
-            <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              <AlertCircleIcon aria-hidden className="mt-0.5 size-4" />
-              <span>{actionError}</span>
-            </div>
-          ) : null}
-          {canHostStart ? (
-            <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-muted-foreground">
-                {startDisabled
-                  ? "Chaque joueur doit choisir une carte secrète avant de commencer."
-                  : "Lancez la partie pour démarrer le premier tour."}
-              </div>
-              <Button
-                type="button"
-                onClick={handleStartGame}
-                disabled={startDisabled}
-              >
-                <PlayIcon aria-hidden className="mr-2 size-4" />
-                Démarrer le match
-              </Button>
-            </div>
-          ) : null}
-          {gameState.status === GameStatus.Finished ? (
-            <FinalResultCard state={gameState} cardLookup={cardLookup} />
-          ) : null}
-        </section>
-        {boardSections}
+        </aside>
       </div>
       <TurnBar
         turn={turn}
@@ -1343,6 +1467,7 @@ export default function RoomPage() {
         canEndTurn={canEndTurnButton}
         onEndTurn={canEndTurnButton ? handleEndTurn : undefined}
         hostControls={turnBarHostControls}
+        className="relative w-full"
       />
       <TargetSelectionModal
         cards={secretSelectionCards}

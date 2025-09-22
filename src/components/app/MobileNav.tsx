@@ -19,7 +19,10 @@ function MobileNav() {
   const [homeItem, createItem, joinItem] = navigationItems;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 md:hidden">
+    <div
+      data-mobile-nav="true"
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-50 md:hidden"
+    >
       <nav className="pointer-events-auto mx-auto w-full max-w-6xl border-t border-border/70 bg-background/95 px-1 pb-[calc(env(safe-area-inset-bottom)_+_0.75rem)] pt-2 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.35)] backdrop-blur">
         <div className="grid grid-cols-5 items-end gap-1">
           {[homeItem, createItem].map((item) => {
