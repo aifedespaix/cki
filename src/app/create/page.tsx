@@ -15,6 +15,7 @@ import {
   persistHostPreparation,
   persistLatestNickname,
 } from "@/lib/storage/session";
+import { createRandomId } from "@/lib/utils";
 
 const createRoomId = (): string => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -72,11 +73,13 @@ export default function CreatePage() {
 
     const assets = editor.getAssets();
     const roomId = createRoomId();
+    const hostId = createRandomId("player");
 
     try {
       persistHostPreparation({
         roomId,
         nickname: trimmedNickname,
+        hostId,
         grid,
         assets,
       });

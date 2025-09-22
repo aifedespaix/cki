@@ -1,5 +1,6 @@
 import type { Grid } from "@/lib/game/types";
 import type { ImageAssetDraft } from "@/lib/storage/db";
+import { createRandomId } from "@/lib/utils";
 
 const HOST_SESSION_PREFIX = "cki:host-session:";
 
@@ -11,6 +12,7 @@ const createStorageKey = (roomId: string): string =>
 export interface HostPreparationRecord {
   roomId: string;
   nickname: string;
+  hostId: string;
   grid: Grid;
   assets: Record<string, ImageAssetDraft>;
   createdAt: number;
@@ -53,11 +55,44 @@ export const loadHostPreparation = (
   }
 
   try {
-    const parsed = JSON.parse(raw) as HostPreparationRecord;
-    if (!parsed || parsed.roomId !== roomId) {
+    const parsed = JSON.parse(raw) as Partial<HostPreparationRecord> | null;
+    if (
+      !parsed ||
+      parsed.roomId !== roomId ||
+      typeof parsed.nickname !== "string" ||
+      !parsed.grid
+    ) {
       return null;
     }
-    return parsed;
+    const normalised: HostPreparationRecord = {
+      roomId: parsed.roomId,
+      nickname: parsed.nickname,
+      hostId:
+        typeof parsed.hostId === "string" && parsed.hostId
+          ? parsed.hostId
+          : createRandomId("player"),
+      grid: parsed.grid as Grid,
+      assets: parsed.assets ?? {},
+      createdAt:
+        typeof parsed.createdAt === "number" &&
+        Number.isFinite(parsed.createdAt)
+          ? parsed.createdAt
+          : Date.now(),
+    };
+
+    if (!parsed.hostId) {
+      try {
+        const key = createStorageKey(roomId);
+        window.localStorage.setItem(key, JSON.stringify(normalised));
+      } catch (writeError) {
+        console.warn(
+          "Impossible de normaliser les données de préparation de salle.",
+          writeError,
+        );
+      }
+    }
+
+    return normalised;
   } catch (error) {
     console.error("Impossible de lire la préparation de partie.", error);
     return null;
