@@ -20,6 +20,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import {
   type FormEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useId,
@@ -2104,9 +2105,68 @@ export default function RoomPage() {
     },
   ];
 
+  const boardSections: ReactNode[] = orderedPlayers.map((player) => {
+    const isLocal = localPlayer?.id === player.id;
+    const accent: PlayerBoardAccent = isLocal
+      ? "self"
+      : localPlayer
+        ? "opponent"
+        : "neutral";
+    const hiddenCardIds = new Set(player.flippedCardIds);
+    const secretCard = player.secretCardId
+      ? (cardLookup.get(player.secretCardId) ?? null)
+      : null;
+    const allowSecretSelection =
+      isLocal && gameState.status === GameStatus.Lobby;
+    const allowRandomSecret = allowSecretSelection && grid.cards.length > 0;
+    const allowCardToggle =
+      isLocal &&
+      gameState.status === GameStatus.Playing &&
+      activePlayerId === player.id;
+    const showSecretCard = isSpectatorView || isLocal;
+
+    return (
+      <section
+        key={`player-${player.id}`}
+        className="flex h-full min-h-0 flex-col overflow-hidden"
+      >
+        <PlayerBoard
+          player={player}
+          grid={grid}
+          accent={accent}
+          hiddenCardIds={hiddenCardIds}
+          secretCard={secretCard}
+          showSecretCard={showSecretCard}
+          allowSecretSelection={allowSecretSelection}
+          allowRandomSecret={allowRandomSecret}
+          allowCardToggle={allowCardToggle}
+          onSelectSecret={(cardId) => handleSelectSecret(player.id, cardId)}
+          onRandomSecret={() => handleRandomSecret(player)}
+          onToggleCard={(cardId) => handleToggleCard(player.id, cardId)}
+          status={gameState.status}
+          isLocal={isLocal}
+          isActiveTurn={activePlayerId === player.id}
+          isSpectatorView={isSpectatorView}
+          ready={Boolean(player.secretCardId)}
+        />
+      </section>
+    );
+  });
+
+  while (boardSections.length < 2) {
+    boardSections.push(
+      <section
+        key={`placeholder-${boardSections.length}`}
+        className="flex h-full min-h-0 flex-col overflow-hidden"
+      >
+        <MissingOpponentBoard grid={grid} />
+      </section>,
+    );
+  }
+
   return (
-    <div className="full-height-page flex min-h-0 flex-1 flex-col gap-6">
-      <div className="flex basis-1/4 min-h-[25%] flex-col gap-6 overflow-auto rounded-2xl border border-border/70 bg-background/80 p-6 shadow-sm">
+    <div className="full-height-page grid h-full min-h-0 flex-1 gap-4 sm:gap-6 grid-rows-[2fr_3fr_3fr] lg:grid-cols-2 lg:grid-rows-[2fr_6fr]">
+      <section className="flex min-h-0 flex-col gap-6 overflow-y-auto rounded-2xl border border-border/70 bg-background/80 p-6 shadow-sm lg:col-span-2">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
@@ -2204,66 +2264,8 @@ export default function RoomPage() {
         {gameState.status === GameStatus.Finished ? (
           <FinalResultCard state={gameState} cardLookup={cardLookup} />
         ) : null}
-      </div>
-      <div className="flex basis-3/4 min-h-0 flex-col gap-4 overflow-hidden">
-        <div className="flex flex-1 flex-col gap-4 overflow-hidden xl:flex-row xl:gap-6">
-          {orderedPlayers.map((player) => {
-            const isLocal = localPlayer?.id === player.id;
-            const accent: PlayerBoardAccent = isLocal
-              ? "self"
-              : localPlayer
-                ? "opponent"
-                : "neutral";
-            const hiddenCardIds = new Set(player.flippedCardIds);
-            const secretCard = player.secretCardId
-              ? (cardLookup.get(player.secretCardId) ?? null)
-              : null;
-            const allowSecretSelection =
-              isLocal && gameState.status === GameStatus.Lobby;
-            const allowRandomSecret =
-              allowSecretSelection && grid.cards.length > 0;
-            const allowCardToggle =
-              isLocal &&
-              gameState.status === GameStatus.Playing &&
-              activePlayerId === player.id;
-            const showSecretCard = isSpectatorView || isLocal;
-
-            return (
-              <div
-                key={player.id}
-                className="flex flex-1 min-h-[320px] flex-col overflow-hidden"
-              >
-                <PlayerBoard
-                  player={player}
-                  grid={grid}
-                  accent={accent}
-                  hiddenCardIds={hiddenCardIds}
-                  secretCard={secretCard}
-                  showSecretCard={showSecretCard}
-                  allowSecretSelection={allowSecretSelection}
-                  allowRandomSecret={allowRandomSecret}
-                  allowCardToggle={allowCardToggle}
-                  onSelectSecret={(cardId) =>
-                    handleSelectSecret(player.id, cardId)
-                  }
-                  onRandomSecret={() => handleRandomSecret(player)}
-                  onToggleCard={(cardId) => handleToggleCard(player.id, cardId)}
-                  status={gameState.status}
-                  isLocal={isLocal}
-                  isActiveTurn={activePlayerId === player.id}
-                  isSpectatorView={isSpectatorView}
-                  ready={Boolean(player.secretCardId)}
-                />
-              </div>
-            );
-          })}
-          {orderedPlayers.length < 2 ? (
-            <div className="flex flex-1 min-h-[320px] flex-col overflow-hidden">
-              <MissingOpponentBoard grid={grid} />
-            </div>
-          ) : null}
-        </div>
-      </div>
+      </section>
+      {boardSections}
     </div>
   );
 }
