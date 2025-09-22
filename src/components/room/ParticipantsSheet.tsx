@@ -249,11 +249,15 @@ function ParticipantsSheet({
             <ShieldIcon aria-hidden className="size-5 text-primary" />
             Participants et rôles
           </SheetTitle>
-          <SheetDescription className="space-y-1 text-sm">
-            <p>Suivez les connexions et gérez les accès à la partie.</p>
-            <p className="text-xs text-muted-foreground">
-              {statusLabel} — {turnLabel}
-            </p>
+          <SheetDescription asChild className="space-y-1">
+            <div>
+              <p className="m-0">
+                Suivez les connexions et gérez les accès à la partie.
+              </p>
+              <p className="m-0 text-xs text-muted-foreground">
+                {statusLabel} — {turnLabel}
+              </p>
+            </div>
           </SheetDescription>
         </SheetHeader>
         <ScrollArea className="flex-1 px-6 py-4">
