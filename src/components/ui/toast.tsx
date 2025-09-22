@@ -342,7 +342,7 @@ const Toast = React.forwardRef<HTMLLIElement, ToastProps>(function Toast(
           props.onMouseLeave?.(event);
         }}
         className={cn(
-          "bg-background text-foreground pointer-events-auto flex w-full max-w-md items-start gap-4 rounded-xl border p-4 shadow-lg transition-all data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-80 data-[state=open]:slide-in-from-top sm:data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-right",
+          "bg-background text-foreground pointer-events-auto relative flex w-full max-w-md items-start gap-4 rounded-xl border p-4 shadow-lg transition-all data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-80 data-[state=open]:slide-in-from-top sm:data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-right",
           className,
         )}
         {...props}
