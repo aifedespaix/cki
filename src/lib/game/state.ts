@@ -319,12 +319,7 @@ export const reduceGameState = (
         } satisfies PlayingState;
       }
 
-      assert(
-        player.secretCardId !== cardId,
-        action,
-        "A player cannot flip their own secret card",
-      );
-
+      // The secret card remains tracked separately, so allow toggling it on the board.
       const updatedPlayer: Player = {
         ...player,
         flippedCardIds: sortFlippedCards(playingState.grid, [
