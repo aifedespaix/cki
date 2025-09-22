@@ -1,13 +1,13 @@
+import type { SexType } from "@faker-js/faker";
 import { base, en, Faker } from "@faker-js/faker";
 
 import type { Card } from "./types";
 
 /** Supported genders for the random avatar generator. */
-export type RandomAvatarGender = "male" | "female";
+export type RandomAvatarGender = SexType;
 
-const AVATAR_BASE_URL = "https://xsgames.co/randomusers/assets/avatars";
-const MIN_AVATAR_ID = 1;
-const MAX_AVATAR_ID = 60;
+/** Default size in pixels for generated portrait images. */
+const PERSON_PORTRAIT_SIZE = 256;
 
 const createSeededFaker = (seed: number): Faker => {
   const fakerInstance = new Faker({
@@ -35,16 +35,8 @@ const normaliseSeed = (seed: number): number => {
   return normalised === 0 ? 1 : normalised;
 };
 
-const pickAvatarId = (random: () => number): number => {
-  const span = MAX_AVATAR_ID - MIN_AVATAR_ID + 1;
-  return MIN_AVATAR_ID + Math.floor(random() * span);
-};
-
 const pickAvatarGender = (random: () => number): RandomAvatarGender =>
   random() < 0.5 ? "male" : "female";
-
-const buildAvatarUrl = (gender: RandomAvatarGender, avatarId: number): string =>
-  `${AVATAR_BASE_URL}/${gender}/${avatarId}.jpg`;
 
 /**
  * Generates a cryptographically strong seed when available, falling back to a
@@ -87,13 +79,16 @@ export const generateRandomCards = ({
 
   return cards.map((card) => {
     const gender = pickAvatarGender(random);
-    const avatarId = pickAvatarId(random);
     const name = fakerInstance.person.firstName(gender);
+    const imageUrl = fakerInstance.image.personPortrait({
+      sex: gender,
+      size: PERSON_PORTRAIT_SIZE,
+    });
 
     return {
       ...card,
       label: name,
-      imageUrl: buildAvatarUrl(gender, avatarId),
+      imageUrl,
       description: undefined,
     } satisfies Card;
   });
