@@ -142,6 +142,14 @@ export type JoinLobbyAction = {
   };
 };
 
+export type UpdatePlayerNameAction = {
+  type: "game/updatePlayerName";
+  payload: {
+    playerId: string;
+    name: string;
+  };
+};
+
 export type SetSecretAction = {
   type: "game/setSecret";
   payload: {
@@ -188,6 +196,7 @@ export type ResetAction = {
 export type Action =
   | CreateLobbyAction
   | JoinLobbyAction
+  | UpdatePlayerNameAction
   | SetSecretAction
   | StartGameAction
   | FlipCardAction
@@ -200,6 +209,7 @@ export type Action =
  * initial snapshot has been exchanged.
  */
 export type SynchronisedAction =
+  | Extract<Action, { type: "game/updatePlayerName" }>
   | Extract<Action, { type: "turn/flipCard" }>
   | Extract<Action, { type: "turn/end" }>
   | Extract<Action, { type: "turn/guess" }>

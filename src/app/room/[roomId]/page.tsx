@@ -104,6 +104,8 @@ import {
   loadGuestSession,
   loadHostPreparation,
   persistGuestSession,
+  persistLatestNickname,
+  updateHostPreparation,
 } from "@/lib/storage/session";
 import { cn, createRandomId } from "@/lib/utils";
 import { analyseGuessConfirmationContext } from "./guessConfirmation";
@@ -1151,14 +1153,72 @@ export default function RoomPage() {
     setRoleSelectionError(null);
   }, []);
   const handleConfirmPlayerRole = useCallback(() => {
+    const trimmedNickname = roleSelectionNickname.trim();
+    if (!trimmedNickname) {
+      setRoleSelectionError(
+        "Veuillez renseigner un pseudo pour rejoindre la salle.",
+      );
+      return;
+    }
+
     if (canonicalLocalPlayer) {
+      const shouldUpdateName = trimmedNickname !== canonicalLocalPlayer.name;
+      if (shouldUpdateName) {
+        try {
+          applyGameAction({
+            type: "game/updatePlayerName",
+            payload: {
+              playerId: canonicalLocalPlayer.id,
+              name: trimmedNickname,
+            },
+          });
+        } catch (error) {
+          setRoleSelectionError(
+            error instanceof Error
+              ? error.message
+              : "Impossible de mettre à jour le pseudo. Réessayez dans un instant.",
+          );
+          return;
+        }
+
+        if (hostPreparation && canonicalLocalPlayer.role === PlayerRole.Host) {
+          const updatedPreparation: HostPreparationRecord = {
+            ...hostPreparation,
+            nickname: trimmedNickname,
+          };
+          setHostPreparation(updatedPreparation);
+          try {
+            updateHostPreparation(updatedPreparation);
+          } catch (storageError) {
+            console.error(
+              "Impossible de mettre à jour le pseudo de l’hôte dans le stockage local.",
+              storageError,
+            );
+          }
+        }
+      }
+
+      if (canonicalLocalPlayer.role === PlayerRole.Host) {
+        try {
+          persistLatestNickname(trimmedNickname);
+        } catch (storageError) {
+          console.error(
+            "Impossible de mémoriser le dernier pseudo utilisé.",
+            storageError,
+          );
+        }
+      }
+
+      setRoleSelectionNickname(trimmedNickname);
       setViewAsSpectator(false);
       setIsRoleSelectionOpen(false);
       setRoleSelectionError(null);
       return;
     }
+
     try {
-      handleJoinAsGuest(roleSelectionNickname);
+      handleJoinAsGuest(trimmedNickname);
+      setRoleSelectionNickname(trimmedNickname);
       setViewAsSpectator(false);
       setIsRoleSelectionOpen(false);
       setRoleSelectionError(null);
@@ -1169,7 +1229,13 @@ export default function RoomPage() {
           : "Impossible de rejoindre la salle. Réessayez dans un instant.",
       );
     }
-  }, [canonicalLocalPlayer, handleJoinAsGuest, roleSelectionNickname]);
+  }, [
+    canonicalLocalPlayer,
+    handleJoinAsGuest,
+    roleSelectionNickname,
+    hostPreparation,
+    applyGameAction,
+  ]);
   const handleOpenRoleSelection = useCallback(() => {
     setRoleSelectionNickname(canonicalLocalPlayerName ?? localGuestName ?? "");
     setRoleSelectionError(null);
@@ -1621,6 +1687,7 @@ export default function RoomPage() {
         canJoinAsPlayer={canJoinAsPlayer}
         isJoining={isJoiningLobby}
         error={roleSelectionError}
+        canEditExistingPlayerNickname={isLocalHost}
         onNicknameChange={handleRoleSelectionNicknameChange}
         onConfirmPlayer={handleConfirmPlayerRole}
         onConfirmSpectator={handleConfirmSpectatorRole}

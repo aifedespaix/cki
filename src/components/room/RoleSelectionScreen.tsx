@@ -29,6 +29,7 @@ interface RoleSelectionScreenProps {
   canJoinAsPlayer: boolean;
   isJoining: boolean;
   error: string | null;
+  canEditExistingPlayerNickname: boolean;
   onNicknameChange(value: string): void;
   onConfirmPlayer(): void;
   onConfirmSpectator(): void;
@@ -44,18 +45,33 @@ export function RoleSelectionScreen({
   canJoinAsPlayer,
   isJoining,
   error,
+  canEditExistingPlayerNickname,
   onNicknameChange,
   onConfirmPlayer,
   onConfirmSpectator,
 }: RoleSelectionScreenProps) {
   const trimmedNickname = nickname.trim();
   const playerLabel = playerRole ? roleLabels[playerRole] : null;
-  const joinDisabled =
-    !canJoinAsPlayer || trimmedNickname.length === 0 || isJoining;
+  const isNicknameEmpty = trimmedNickname.length === 0;
+  const newPlayerJoinDisabled =
+    !canJoinAsPlayer || isNicknameEmpty || isJoining;
+  const existingPlayerUpdateDisabled = isNicknameEmpty || isJoining;
+  const nicknameInputDisabled =
+    isAlreadyPlayer && canEditExistingPlayerNickname
+      ? isJoining
+      : !canJoinAsPlayer || isJoining;
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleNewPlayerSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (joinDisabled) {
+    if (newPlayerJoinDisabled) {
+      return;
+    }
+    onConfirmPlayer();
+  };
+
+  const handleExistingPlayerSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (existingPlayerUpdateDisabled) {
       return;
     }
     onConfirmPlayer();
@@ -103,19 +119,65 @@ export function RoleSelectionScreen({
                     ? "Sélectionnez « Revenir en tant que joueur » pour reprendre le contrôle de votre plateau sur cet appareil."
                     : "Sélectionnez « Continuer en tant que joueur » pour accéder à votre plateau et finaliser la préparation."}
                 </p>
-                <Button type="button" onClick={onConfirmPlayer}>
-                  <UsersIcon aria-hidden className="mr-2 size-4" />
-                  {isViewingAsSpectator
-                    ? "Revenir en tant que joueur"
-                    : "Continuer en tant que joueur"}
-                </Button>
+                {canEditExistingPlayerNickname ? (
+                  <form
+                    className="space-y-4"
+                    onSubmit={handleExistingPlayerSubmit}
+                  >
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="role-selection-nickname"
+                        className="text-sm font-medium text-foreground"
+                      >
+                        Votre pseudo
+                      </label>
+                      <input
+                        id="role-selection-nickname"
+                        type="text"
+                        value={nickname}
+                        onChange={(event) =>
+                          onNicknameChange(event.target.value)
+                        }
+                        className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        placeholder="Hôte de la partie"
+                        maxLength={40}
+                        autoComplete="off"
+                        disabled={nicknameInputDisabled}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Ce pseudo identifie votre plateau pendant la partie.
+                      </p>
+                    </div>
+                    {error ? (
+                      <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                        {error}
+                      </div>
+                    ) : null}
+                    <Button
+                      type="submit"
+                      disabled={existingPlayerUpdateDisabled}
+                    >
+                      <UsersIcon aria-hidden className="mr-2 size-4" />
+                      {isViewingAsSpectator
+                        ? "Mettre à jour et revenir en tant que joueur"
+                        : "Mettre à jour et continuer"}
+                    </Button>
+                  </form>
+                ) : (
+                  <Button type="button" onClick={onConfirmPlayer}>
+                    <UsersIcon aria-hidden className="mr-2 size-4" />
+                    {isViewingAsSpectator
+                      ? "Revenir en tant que joueur"
+                      : "Continuer en tant que joueur"}
+                  </Button>
+                )}
               </>
             ) : (
               <>
                 <p className="text-sm text-muted-foreground">
                   Prenez la prochaine place disponible pour affronter l’hôte.
                 </p>
-                <form className="space-y-4" onSubmit={handleSubmit}>
+                <form className="space-y-4" onSubmit={handleNewPlayerSubmit}>
                   <div className="space-y-2">
                     <label
                       htmlFor="role-selection-nickname"
@@ -132,7 +194,7 @@ export function RoleSelectionScreen({
                       placeholder="Invité mystère"
                       maxLength={40}
                       autoComplete="off"
-                      disabled={!canJoinAsPlayer || isJoining}
+                      disabled={nicknameInputDisabled}
                     />
                     <p className="text-xs text-muted-foreground">
                       Ce pseudo identifie votre plateau pendant la partie.
@@ -149,7 +211,7 @@ export function RoleSelectionScreen({
                       le mode spectateur pour suivre la partie.
                     </div>
                   ) : null}
-                  <Button type="submit" disabled={joinDisabled}>
+                  <Button type="submit" disabled={newPlayerJoinDisabled}>
                     <UsersIcon aria-hidden className="mr-2 size-4" />
                     {isJoining ? "Connexion…" : "Rejoindre la partie"}
                   </Button>

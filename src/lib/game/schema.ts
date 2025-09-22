@@ -233,6 +233,19 @@ export const setSecretActionSchema = z
   })
   .strict();
 
+export const updatePlayerNameActionSchema = z
+  .object({
+    type: z.literal<"game/updatePlayerName">("game/updatePlayerName"),
+    payload: z.object({
+      playerId: z.string().min(1),
+      name: z
+        .string()
+        .min(1, "Player name is required")
+        .max(40, "Player name cannot exceed 40 characters"),
+    }),
+  })
+  .strict();
+
 export const startGameActionSchema = z
   .object({
     type: z.literal<"game/start">("game/start"),
@@ -279,6 +292,7 @@ export const resetActionSchema = z
   .strict();
 
 export const synchronisedActionSchema = z.discriminatedUnion("type", [
+  updatePlayerNameActionSchema,
   flipCardActionSchema,
   endTurnActionSchema,
   guessActionSchema,
@@ -289,6 +303,7 @@ export const actionSchema: z.ZodType<Action> = z.discriminatedUnion("type", [
   createLobbyActionSchema,
   joinLobbyActionSchema,
   setSecretActionSchema,
+  updatePlayerNameActionSchema,
   startGameActionSchema,
   flipCardActionSchema,
   endTurnActionSchema,
