@@ -55,8 +55,8 @@ export default function JoinPage() {
       } catch (decodeError) {
         setError(
           decodeError instanceof Error
-            ? decodeError.message
-            : "Le fragment de l’URL ne correspond pas à un token valide.",
+            ? "Impossible de lire ce lien d’invitation. Vérifiez qu’il est complet."
+            : "Impossible de lire ce lien d’invitation. Vérifiez qu’il est complet.",
         );
       }
     }
@@ -84,7 +84,7 @@ export default function JoinPage() {
     event.preventDefault();
     const maybeToken = extractTokenFromInput(inputValue);
     if (!maybeToken) {
-      setError("Veuillez coller un lien ou un token valide.");
+      setError("Veuillez coller un lien ou un code valide.");
       setGrid(null);
       setToken(null);
       updateLocationHash(null);
@@ -101,13 +101,17 @@ export default function JoinPage() {
     } catch (decodeError) {
       setGrid(null);
       setToken(null);
-      setError(
-        decodeError instanceof InvalidShareTokenError
-          ? decodeError.message
-          : decodeError instanceof Error
+      if (decodeError instanceof InvalidShareTokenError) {
+        setError(
+          "Impossible de lire ce lien d’invitation. Vérifiez qu’il est complet.",
+        );
+      } else {
+        setError(
+          decodeError instanceof Error
             ? decodeError.message
-            : "Impossible de décoder ce token.",
-      );
+            : "Impossible de décoder ce lien.",
+        );
+      }
     }
   };
 
@@ -122,16 +126,16 @@ export default function JoinPage() {
           Rejoignez une partie avec un simple lien
         </h1>
         <p className="text-base text-muted-foreground sm:text-lg">
-          Collez le lien d’invitation ou le token communiqué par l’hôte. Le
-          plateau est reconstruit localement sans échange de données
-          personnelles.
+          Collez le lien d’invitation transmis par l’hôte. Si vous avez reçu un
+          code seul, collez-le directement : le plateau est recréé sur votre
+          appareil sans partage de données personnelles.
         </p>
       </section>
 
       <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
         <Card className="border border-border/70">
           <CardHeader>
-            <CardTitle>Coller un lien ou un token</CardTitle>
+            <CardTitle>Coller un lien d’invitation</CardTitle>
             <CardDescription>
               L’URL générée depuis la page « Créer » contient un fragment `#`
               avec les informations compressées.
@@ -144,7 +148,7 @@ export default function JoinPage() {
                   htmlFor="invite-token"
                   className="text-sm font-medium text-foreground"
                 >
-                  Lien d’invitation ou token
+                  Lien d’invitation ou code
                 </label>
                 <input
                   id="invite-token"
@@ -152,7 +156,7 @@ export default function JoinPage() {
                   value={inputValue}
                   onChange={(event) => setInputValue(event.target.value)}
                   className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="https://exemple.com/join#TOKEN"
+                  placeholder="https://exemple.com/join#votreCode"
                 />
               </div>
               <div className="flex flex-wrap items-center gap-3">
@@ -179,8 +183,8 @@ export default function JoinPage() {
             ) : (
               <p className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
                 <ArrowRightIcon aria-hidden="true" className="size-4" />
-                Le token n’est jamais envoyé à un serveur : tout est traité dans
-                votre navigateur.
+                Le lien est interprété uniquement dans votre navigateur : rien
+                n’est transmis en ligne.
               </p>
             )}
           </CardContent>
@@ -229,7 +233,7 @@ export default function JoinPage() {
                 <GridPreview grid={grid} />
                 {token ? (
                   <p className="text-xs text-muted-foreground">
-                    Token actuel :{" "}
+                    Code importé :{" "}
                     <span className="font-mono break-all">{token}</span>
                   </p>
                 ) : null}

@@ -319,13 +319,13 @@ function InviteDialog({
       const token = encodeGridToToken(grid);
       return { token, error: null };
     } catch (error) {
-      console.error("Impossible de générer le token d’invitation.", error);
+      console.error("Impossible de générer le code d’invitation.", error);
       return {
         token: null,
         error:
           error instanceof Error
             ? error.message
-            : "Erreur inconnue lors de la génération du token.",
+            : "Erreur inconnue lors de la génération du code.",
       };
     }
   }, [grid]);
@@ -476,7 +476,7 @@ function InviteDialog({
             </div>
             {sharePayload.token ? (
               <p className="text-xs text-muted-foreground">
-                Token brut :{" "}
+                Code compressé :{" "}
                 <code className="break-all rounded bg-muted px-1 py-0.5">
                   {sharePayload.token}
                 </code>
@@ -710,7 +710,7 @@ function JoinAsGuestForm({
           </div>
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>
-              Ce pseudo sera partagé via la connexion pair-à-pair afin que votre
+              Ce pseudo sera visible par les autres participants afin que votre
               adversaire sache qui a rejoint la salle.
             </p>
             <p>
@@ -943,7 +943,7 @@ function RoomInformationDialog({
           <p className="text-muted-foreground">
             La salle reste active tant que les participants conservent cette
             page ouverte. Les échanges se synchronisent directement entre
-            appareils via une connexion pair-à-pair sécurisée.
+            appareils via une connexion chiffrée de navigateur à navigateur.
           </p>
         </div>
       </DialogContent>
@@ -1698,7 +1698,7 @@ export default function RoomPage() {
       } catch (error) {
         const details =
           error instanceof Error ? error.message : "Message distant invalide.";
-        console.error("Invalid P2P action payload", error);
+        console.error("Invalid realtime action payload", error);
         setActionError(`Action distante invalide : ${details}`);
         if (resolvedPeerRole === PeerRole.Guest) {
           setIsJoiningLobby(false);
@@ -1718,7 +1718,7 @@ export default function RoomPage() {
       setIsJoiningLobby(false);
       setActionError(
         peerConnection.error.message ??
-          "Erreur de connexion pair-à-pair. Réessayez plus tard.",
+          "Erreur de connexion directe. Réessayez plus tard.",
       );
     }
   }, [resolvedPeerRole, peerConnection.phase, peerConnection.error]);
@@ -1735,7 +1735,7 @@ export default function RoomPage() {
       if (!replicator) {
         if (resolvedPeerRole === PeerRole.Guest) {
           const error = new Error(
-            "Connexion pair-à-pair indisponible. Réessayez une fois la synchronisation établie.",
+            "Connexion directe indisponible. Réessayez une fois la synchronisation établie.",
           );
           setActionError(error.message);
           throw error;

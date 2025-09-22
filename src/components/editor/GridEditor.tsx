@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCcwIcon } from "lucide-react";
+import { RefreshCcwIcon, SparklesIcon } from "lucide-react";
 import {
   forwardRef,
   useCallback,
@@ -21,6 +21,7 @@ import {
 import {
   createRandomSeed,
   generateRandomCards,
+  generateRandomFirstName,
 } from "@/lib/game/random-characters";
 import type { Card as GameCard, Grid } from "@/lib/game/types";
 import {
@@ -30,8 +31,8 @@ import {
 } from "@/lib/storage/db";
 import { createRandomId } from "@/lib/utils";
 
-import { CardEditorItem } from "./CardEditorItem";
-import { GridPreview } from "./GridPreview";
+import { CardImageEditorDialog } from "./CardImageEditorDialog";
+import { EditableGridPreview } from "./EditableGridPreview";
 
 const MIN_DIMENSION = 2;
 const MAX_DIMENSION = 8;
@@ -101,6 +102,9 @@ export const GridEditor = forwardRef<GridEditorHandle, GridEditorProps>(
       Record<string, ImageAssetDraft>
     >({});
     const [hasRestoredDraft, setHasRestoredDraft] = useState(false);
+    const [activeImageCardId, setActiveImageCardId] = useState<string | null>(
+      null,
+    );
 
     useEffect(() => {
       const total = rows * columns;
@@ -222,6 +226,16 @@ export const GridEditor = forwardRef<GridEditorHandle, GridEditorProps>(
     }, [cards, imageMetadata]);
 
     useEffect(() => {
+      if (!activeImageCardId) {
+        return;
+      }
+      const stillExists = cards.some((card) => card.id === activeImageCardId);
+      if (!stillExists) {
+        setActiveImageCardId(null);
+      }
+    }, [activeImageCardId, cards]);
+
+    useEffect(() => {
       if (!hasRestoredDraft) {
         return;
       }
@@ -256,13 +270,34 @@ export const GridEditor = forwardRef<GridEditorHandle, GridEditorProps>(
       setColumns(clampDimension(event.target.valueAsNumber));
     };
 
-    const handleCardChange = (index: number, nextCard: GameCard) => {
-      setCards((previous) => {
-        const next = [...previous];
-        next[index] = nextCard;
-        return next;
-      });
-    };
+    const updateCard = useCallback(
+      (cardId: string, updater: (card: GameCard) => GameCard) => {
+        setCards((previous) => {
+          const index = previous.findIndex((card) => card.id === cardId);
+          if (index === -1) {
+            return previous;
+          }
+          const next = [...previous];
+          next[index] = updater(previous[index]);
+          return next;
+        });
+      },
+      [],
+    );
+
+    const handleCardUpdate = useCallback(
+      (nextCard: GameCard) => {
+        updateCard(nextCard.id, () => nextCard);
+      },
+      [updateCard],
+    );
+
+    const handleCardLabelChange = useCallback(
+      (cardId: string, nextLabel: string) => {
+        updateCard(cardId, (card) => ({ ...card, label: nextLabel }));
+      },
+      [updateCard],
+    );
 
     const handleImageProcessed = (metadata: ImageAssetDraft) => {
       setImageMetadata((previous) => {
@@ -318,6 +353,26 @@ export const GridEditor = forwardRef<GridEditorHandle, GridEditorProps>(
       setImageMetadata(() => ({}));
     }, []);
 
+    const handleRandomLabel = useCallback(
+      (cardId: string): string => {
+        const randomName = generateRandomFirstName();
+        updateCard(cardId, (card) => ({ ...card, label: randomName }));
+        return randomName;
+      },
+      [updateCard],
+    );
+
+    const activeCard = activeImageCardId
+      ? (cards.find((card) => card.id === activeImageCardId) ?? null)
+      : null;
+    const activeAsset = activeCard ? imageMetadata[activeCard.id] : undefined;
+
+    const handleImageDialogOpenChange = useCallback((nextOpen: boolean) => {
+      if (!nextOpen) {
+        setActiveImageCardId(null);
+      }
+    }, []);
+
     const buildNormalisedGrid = useCallback((): Grid => {
       const total = rows * columns;
       if (cards.length !== total) {
@@ -359,163 +414,150 @@ export const GridEditor = forwardRef<GridEditorHandle, GridEditorProps>(
     );
 
     return (
-      <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="space-y-8">
-          <Card className="border border-border/70">
-            <CardHeader>
-              <CardTitle>Paramètres de la grille</CardTitle>
-              <CardDescription>
-                Ajustez les dimensions et l’identifiant avant de configurer les
-                cartes.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label
-                    htmlFor="grid-name"
-                    className="text-sm font-medium text-foreground"
-                  >
-                    Nom de la grille
-                  </label>
-                  <input
-                    id="grid-name"
-                    type="text"
-                    value={gridName}
-                    onChange={(event) => setGridName(event.target.value)}
-                    className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    placeholder="Tournoi d’entraînement"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label
-                      htmlFor="grid-id"
-                      className="text-sm font-medium text-foreground"
-                    >
-                      Identifiant technique
-                    </label>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={regenerateGridId}
-                      className="h-8 px-2 text-xs"
-                    >
-                      <RefreshCcwIcon
-                        aria-hidden="true"
-                        className="mr-1 size-3.5"
-                      />
-                      Régénérer
-                    </Button>
-                  </div>
-                  <input
-                    id="grid-id"
-                    type="text"
-                    value={gridId}
-                    onChange={(event) => setGridId(event.target.value)}
-                    className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    placeholder="grid-tournoi"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Cet identifiant est inclus dans le lien partagé et permet de
-                    reconnaître la grille.
-                  </p>
-                </div>
+      <div className="space-y-8">
+        <Card className="border border-border/70">
+          <CardHeader>
+            <CardTitle>Paramètres de la grille</CardTitle>
+            <CardDescription>
+              Ajustez les dimensions et l’identifiant avant de personnaliser les
+              cartes.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <label
+                  htmlFor="grid-name"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Nom de la grille
+                </label>
+                <input
+                  id="grid-name"
+                  type="text"
+                  value={gridName}
+                  onChange={(event) => setGridName(event.target.value)}
+                  className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="Tournoi d’entraînement"
+                />
               </div>
-              <div className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-2">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
                   <label
-                    htmlFor="grid-rows"
+                    htmlFor="grid-id"
                     className="text-sm font-medium text-foreground"
                   >
-                    Nombre de lignes
+                    Identifiant technique
                   </label>
-                  <input
-                    id="grid-rows"
-                    type="number"
-                    min={MIN_DIMENSION}
-                    max={MAX_DIMENSION}
-                    value={rows}
-                    onChange={handleRowsChange}
-                    className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label
-                    htmlFor="grid-columns"
-                    className="text-sm font-medium text-foreground"
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={regenerateGridId}
+                    className="h-8 px-2 text-xs"
                   >
-                    Nombre de colonnes
-                  </label>
-                  <input
-                    id="grid-columns"
-                    type="number"
-                    min={MIN_DIMENSION}
-                    max={MAX_DIMENSION}
-                    value={columns}
-                    onChange={handleColumnsChange}
-                    className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  />
+                    <RefreshCcwIcon
+                      aria-hidden="true"
+                      className="mr-1 size-3.5"
+                    />
+                    Régénérer
+                  </Button>
                 </div>
+                <input
+                  id="grid-id"
+                  type="text"
+                  value={gridId}
+                  onChange={(event) => setGridId(event.target.value)}
+                  className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="grid-tournoi"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Cet identifiant est intégré au lien partagé et aide à
+                  retrouver la grille.
+                </p>
               </div>
-              <p className="text-sm text-muted-foreground">
-                La grille contiendra {rows * columns} cartes. Ajustez ensuite
-                chaque carte pour personnaliser les avatars.
-              </p>
-            </CardContent>
-          </Card>
+            </div>
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <label
+                  htmlFor="grid-rows"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Nombre de lignes
+                </label>
+                <input
+                  id="grid-rows"
+                  type="number"
+                  min={MIN_DIMENSION}
+                  max={MAX_DIMENSION}
+                  value={rows}
+                  onChange={handleRowsChange}
+                  className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+              <div className="space-y-2">
+                <label
+                  htmlFor="grid-columns"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Nombre de colonnes
+                </label>
+                <input
+                  id="grid-columns"
+                  type="number"
+                  min={MIN_DIMENSION}
+                  max={MAX_DIMENSION}
+                  value={columns}
+                  onChange={handleColumnsChange}
+                  className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              La grille contiendra {rows * columns} cartes. Personnalisez-les en
+              cliquant directement sur l’aperçu ci-dessous.
+            </p>
+          </CardContent>
+        </Card>
 
-          <Card className="border border-border/70">
-            <CardHeader className="space-y-3 sm:flex sm:items-start sm:justify-between sm:space-y-0 sm:gap-4">
-              <div className="space-y-1">
-                <CardTitle>Cartes du plateau</CardTitle>
-                <CardDescription>
-                  Définissez le nom et l’illustration de chaque carte. Les
-                  images en data URI augmentent la taille du lien : privilégiez
-                  les URLs publiques lorsque c’est possible.
-                </CardDescription>
-              </div>
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full sm:w-auto"
-                onClick={handleGenerateRandomGrid}
-              >
-                Generate Random Grid
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 lg:grid-cols-2">
-                {cards.map((card, index) => (
-                  <CardEditorItem
-                    key={card.id}
-                    card={card}
-                    index={index}
-                    assetMetadata={imageMetadata[card.id]}
-                    onChange={(nextCard) => handleCardChange(index, nextCard)}
-                    onImageProcessed={handleImageProcessed}
-                    onImageCleared={handleImageCleared}
-                  />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="space-y-8">
-          <Card className="border border-border/70">
-            <CardHeader>
-              <CardTitle>Aperçu</CardTitle>
+        <Card className="border border-border/70">
+          <CardHeader className="space-y-3 sm:flex sm:items-start sm:justify-between sm:space-y-0 sm:gap-4">
+            <div className="space-y-1">
+              <CardTitle>Cartes du plateau</CardTitle>
               <CardDescription>
-                Vérifiez le rendu final tel qu’il sera affiché aux joueurs.
+                Cliquez sur une image pour l’illustrer et sur un nom pour le
+                modifier. L’aperçu est directement éditable.
               </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <GridPreview grid={previewGrid} />
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full sm:w-auto"
+              onClick={handleGenerateRandomGrid}
+            >
+              <SparklesIcon aria-hidden="true" className="mr-2 size-4" />
+              Remplir automatiquement
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <EditableGridPreview
+              grid={previewGrid}
+              onCardLabelChange={handleCardLabelChange}
+              onRandomLabel={handleRandomLabel}
+              onRequestImageEdit={(cardId) => setActiveImageCardId(cardId)}
+            />
+          </CardContent>
+        </Card>
+
+        <CardImageEditorDialog
+          card={activeCard}
+          assetMetadata={activeAsset}
+          open={Boolean(activeCard)}
+          onOpenChange={handleImageDialogOpenChange}
+          onCardChange={handleCardUpdate}
+          onImageProcessed={handleImageProcessed}
+          onImageCleared={handleImageCleared}
+        />
       </div>
     );
   },
