@@ -63,6 +63,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
 import { useRenderMetrics } from "@/lib/debug/renderMetrics";
+import { gameStateSchema } from "@/lib/game/schema";
 import {
   canStartGame,
   createInitialState,
@@ -93,8 +94,17 @@ import {
 } from "@/lib/p2p/protocol";
 import { RemoteActionQueue } from "@/lib/p2p/remote-action-queue";
 import { decodeGridFromToken } from "@/lib/share/url";
-import type { HostPreparationRecord } from "@/lib/storage/session";
-import { loadHostPreparation } from "@/lib/storage/session";
+import {
+  loadPartySession,
+  type PartySessionRecord,
+  savePartySession,
+} from "@/lib/storage/db";
+import {
+  type HostPreparationRecord,
+  loadGuestSession,
+  loadHostPreparation,
+  persistGuestSession,
+} from "@/lib/storage/session";
 import { cn, createRandomId } from "@/lib/utils";
 import { analyseGuessConfirmationContext } from "./guessConfirmation";
 import {
@@ -144,6 +154,8 @@ export default function RoomPage() {
 
   const [hostPreparation, setHostPreparation] =
     useState<HostPreparationRecord | null>(null);
+  const [storedPartySession, setStoredPartySession] =
+    useState<PartySessionRecord | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [gameState, setGameState] = useState<GameState>(() =>
@@ -165,7 +177,9 @@ export default function RoomPage() {
   const [inviteTokenResolved, setInviteTokenResolved] = useState(false);
   const [inviteGrid, setInviteGrid] = useState<Grid | null>(null);
   const [inviteTokenError, setInviteTokenError] = useState<string | null>(null);
-  const [localGuestId] = useState(() => createRandomId("player"));
+  const [localGuestId, setLocalGuestId] = useState(() =>
+    createRandomId("player"),
+  );
   const [localGuestName, setLocalGuestName] = useState<string | null>(null);
   const [isJoiningLobby, setIsJoiningLobby] = useState(false);
   const [isRoleSelectionOpen, setIsRoleSelectionOpen] = useState(true);
@@ -229,6 +243,11 @@ export default function RoomPage() {
   const replicatorRef = useRef<ActionReplicator | null>(null);
   const pendingRemoteActionsRef = useRef<RemoteActionQueue | null>(null);
   const lastGuessNotificationKeyRef = useRef<string | null>(null);
+  const hasAppliedStoredSessionRef = useRef(false);
+  const hasInitialisedGameStateRef = useRef(false);
+  const hasLoadedGuestSessionRef = useRef(false);
+  const lastPersistedPartyStateRef = useRef<string | null>(null);
+  const lastPersistedGuestSessionRef = useRef<string | null>(null);
   if (!pendingRemoteActionsRef.current) {
     pendingRemoteActionsRef.current = new RemoteActionQueue();
   }
@@ -292,6 +311,11 @@ export default function RoomPage() {
   useEffect(() => {
     setLoadState("loading");
     setLoadError(null);
+    hasAppliedStoredSessionRef.current = false;
+    hasInitialisedGameStateRef.current = false;
+    lastPersistedPartyStateRef.current = null;
+    lastPersistedGuestSessionRef.current = null;
+    hasLoadedGuestSessionRef.current = false;
 
     if (!roomId) {
       setHostPreparation(null);
@@ -343,16 +367,119 @@ export default function RoomPage() {
   ]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!roomId) {
+      setStoredPartySession(null);
+      return;
+    }
+
+    let cancelled = false;
+    loadPartySession(roomId)
+      .then((record) => {
+        if (cancelled) {
+          return;
+        }
+        setStoredPartySession(record);
+      })
+      .catch((error) => {
+        console.error(
+          "Impossible de charger la session locale de la partie.",
+          error,
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId]);
+
+  useEffect(() => {
     if (loadState !== "ready") {
+      hasAppliedStoredSessionRef.current = false;
+      hasInitialisedGameStateRef.current = false;
       setGameState(createInitialState());
       return;
     }
 
-    if (hostPreparation) {
-      setActionError(null);
-      setGameState(() => {
+    const tryRestoreFromSnapshot = (): boolean => {
+      if (!storedPartySession) {
+        return false;
+      }
+
+      try {
+        const parsed = gameStateSchema.parse(storedPartySession.state);
+        if (parsed.status === GameStatus.Idle) {
+          return false;
+        }
+
+        if (hostPreparation) {
+          if (
+            parsed.hostId !== hostPreparation.hostId ||
+            parsed.grid.id !== hostPreparation.grid.id
+          ) {
+            return false;
+          }
+        }
+
+        if (!hostPreparation) {
+          const hostPlayer = parsed.players.find(
+            (player) => player.role === PlayerRole.Host,
+          );
+          const resolvedHostName =
+            hostPlayer?.name ?? inviteContext?.hostName ?? "Hôte";
+
+          if (inviteContext) {
+            if (parsed.grid.id !== inviteContext.grid.id) {
+              return false;
+            }
+            if (
+              parsed.hostId !== inviteContext.hostId ||
+              resolvedHostName !== inviteContext.hostName
+            ) {
+              setInviteContext({
+                hostId: parsed.hostId,
+                hostName: resolvedHostName,
+                grid: parsed.grid,
+              });
+            }
+          } else {
+            setInviteContext({
+              hostId: parsed.hostId,
+              hostName: resolvedHostName,
+              grid: parsed.grid,
+            });
+          }
+        }
+
+        setActionError(null);
+        setGameState(parsed);
+        return true;
+      } catch (error) {
+        console.error("Impossible de restaurer l’état de la partie.", error);
+        return false;
+      }
+    };
+
+    if (!hasAppliedStoredSessionRef.current && storedPartySession) {
+      const restored = tryRestoreFromSnapshot();
+      hasAppliedStoredSessionRef.current = true;
+      if (restored) {
+        hasInitialisedGameStateRef.current = true;
+        return;
+      }
+    }
+
+    if (hasInitialisedGameStateRef.current) {
+      return;
+    }
+
+    const initialiseFromContext = () => {
+      if (hostPreparation) {
         try {
-          return reduceGameState(createInitialState(), {
+          const nextState = reduceGameState(createInitialState(), {
             type: "game/createLobby",
             payload: {
               grid: hostPreparation.grid,
@@ -362,6 +489,8 @@ export default function RoomPage() {
               },
             },
           });
+          setActionError(null);
+          setGameState(nextState);
         } catch (error) {
           console.error("Impossible d'initialiser la salle.", error);
           setActionError(
@@ -369,17 +498,15 @@ export default function RoomPage() {
               ? error.message
               : "Impossible d'initialiser la salle de jeu.",
           );
-          return createInitialState();
+          setGameState(createInitialState());
         }
-      });
-      return;
-    }
+        hasInitialisedGameStateRef.current = true;
+        return;
+      }
 
-    if (inviteContext) {
-      setActionError(null);
-      setGameState(() => {
+      if (inviteContext) {
         try {
-          return reduceGameState(createInitialState(), {
+          const nextState = reduceGameState(createInitialState(), {
             type: "game/createLobby",
             payload: {
               grid: inviteContext.grid,
@@ -389,6 +516,8 @@ export default function RoomPage() {
               },
             },
           });
+          setActionError(null);
+          setGameState(nextState);
         } catch (error) {
           console.error("Impossible d'initialiser la salle.", error);
           setActionError(
@@ -396,14 +525,115 @@ export default function RoomPage() {
               ? error.message
               : "Impossible d'initialiser la salle de jeu.",
           );
-          return createInitialState();
+          setGameState(createInitialState());
         }
-      });
+        hasInitialisedGameStateRef.current = true;
+        return;
+      }
+
+      setGameState(createInitialState());
+      hasInitialisedGameStateRef.current = true;
+    };
+
+    initialiseFromContext();
+  }, [loadState, storedPartySession, hostPreparation, inviteContext]);
+
+  useEffect(() => {
+    if (loadState !== "ready" || hostPreparation) {
+      if (loadState !== "ready") {
+        hasLoadedGuestSessionRef.current = false;
+        lastPersistedGuestSessionRef.current = null;
+      }
       return;
     }
 
-    setGameState(createInitialState());
-  }, [hostPreparation, inviteContext, loadState]);
+    if (hasLoadedGuestSessionRef.current) {
+      return;
+    }
+
+    if (!roomId) {
+      return;
+    }
+
+    const record = loadGuestSession(roomId);
+    if (record) {
+      setLocalGuestId(record.guestId);
+      setLocalGuestName(record.nickname);
+      setViewAsSpectator(record.viewAsSpectator);
+      setIsRoleSelectionOpen(!record.roleSelectionCompleted);
+      lastPersistedGuestSessionRef.current = JSON.stringify({
+        roomId: record.roomId,
+        guestId: record.guestId,
+        nickname: record.nickname,
+        viewAsSpectator: record.viewAsSpectator,
+        roleSelectionCompleted: record.roleSelectionCompleted,
+      });
+    }
+
+    hasLoadedGuestSessionRef.current = true;
+  }, [loadState, hostPreparation, roomId]);
+
+  useEffect(() => {
+    if (!roomId || loadState !== "ready" || hostPreparation) {
+      return;
+    }
+
+    if (!hasLoadedGuestSessionRef.current) {
+      return;
+    }
+
+    const snapshot = {
+      roomId,
+      guestId: localGuestId,
+      nickname: localGuestName,
+      viewAsSpectator,
+      roleSelectionCompleted: !isRoleSelectionOpen,
+    } satisfies Parameters<typeof persistGuestSession>[0];
+
+    const serialised = JSON.stringify(snapshot);
+    if (lastPersistedGuestSessionRef.current === serialised) {
+      return;
+    }
+
+    lastPersistedGuestSessionRef.current = serialised;
+    persistGuestSession(snapshot);
+  }, [
+    roomId,
+    loadState,
+    hostPreparation,
+    localGuestId,
+    localGuestName,
+    viewAsSpectator,
+    isRoleSelectionOpen,
+  ]);
+
+  useEffect(() => {
+    if (!roomId || loadState !== "ready") {
+      return;
+    }
+
+    if (gameState.status === GameStatus.Idle) {
+      return;
+    }
+
+    let serialised: string;
+    try {
+      serialised = JSON.stringify(gameState);
+    } catch (error) {
+      console.error(
+        "Impossible de préparer la sauvegarde de l’état de partie.",
+        error,
+      );
+      return;
+    }
+
+    if (lastPersistedPartyStateRef.current === serialised) {
+      return;
+    }
+
+    lastPersistedPartyStateRef.current = serialised;
+    void savePartySession({ id: roomId, state: gameState });
+  }, [roomId, loadState, gameState]);
 
   useEffect(() => {
     if (!actionError) {
