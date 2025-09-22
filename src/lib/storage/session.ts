@@ -9,6 +9,26 @@ const isBrowser = typeof window !== "undefined";
 const createStorageKey = (roomId: string): string =>
   `${HOST_SESSION_PREFIX}${roomId}`;
 
+const ensureBrowserEnvironment = (): void => {
+  if (!isBrowser) {
+    throw new Error(
+      "Persisting a host session is only supported in the browser",
+    );
+  }
+};
+
+const writeHostPreparationRecord = (record: HostPreparationRecord): void => {
+  ensureBrowserEnvironment();
+
+  try {
+    const key = createStorageKey(record.roomId);
+    window.localStorage.setItem(key, JSON.stringify(record));
+  } catch (error) {
+    console.error("Impossible d'enregistrer la préparation de partie.", error);
+    throw error;
+  }
+};
+
 export interface HostPreparationRecord {
   roomId: string;
   nickname: string;
@@ -21,24 +41,16 @@ export interface HostPreparationRecord {
 export const persistHostPreparation = (
   record: Omit<HostPreparationRecord, "createdAt">,
 ): void => {
-  if (!isBrowser) {
-    throw new Error(
-      "Persisting a host session is only supported in the browser",
-    );
-  }
-
   const payload: HostPreparationRecord = {
     ...record,
     createdAt: Date.now(),
   };
 
-  try {
-    const key = createStorageKey(record.roomId);
-    window.localStorage.setItem(key, JSON.stringify(payload));
-  } catch (error) {
-    console.error("Impossible d'enregistrer la préparation de partie.", error);
-    throw error;
-  }
+  writeHostPreparationRecord(payload);
+};
+
+export const updateHostPreparation = (record: HostPreparationRecord): void => {
+  writeHostPreparationRecord(record);
 };
 
 export const loadHostPreparation = (

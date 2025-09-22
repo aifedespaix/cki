@@ -197,6 +197,65 @@ export const reduceGameState = (
       } satisfies LobbyState;
     }
 
+    case "game/updatePlayerName": {
+      assert(
+        state.status !== GameStatus.Idle,
+        action,
+        "Cannot update player name before the lobby is created",
+      );
+
+      const playerId = action.payload.playerId;
+      const trimmedName = action.payload.name.trim();
+      assert(trimmedName.length > 0, action, "Player name is required");
+
+      const renamePlayer = (players: Player[]): Player[] => {
+        const index = players.findIndex((player) => player.id === playerId);
+        assert(
+          index !== -1,
+          action,
+          `Player "${playerId}" is not part of the match`,
+        );
+
+        const updatedPlayers = clonePlayers(players);
+        const existing = updatedPlayers[index];
+        if (!existing) {
+          throw new InvalidGameActionError(
+            action,
+            `Player "${playerId}" is not part of the match`,
+          );
+        }
+
+        updatedPlayers[index] = {
+          ...existing,
+          name: trimmedName,
+        };
+        return updatedPlayers;
+      };
+
+      if (state.status === GameStatus.Lobby) {
+        return {
+          ...state,
+          players: renamePlayer(state.players),
+        } satisfies LobbyState;
+      }
+
+      if (state.status === GameStatus.Playing) {
+        return {
+          ...state,
+          players: renamePlayer(state.players),
+        } satisfies PlayingState;
+      }
+
+      if (state.status === GameStatus.Finished) {
+        return {
+          ...state,
+          players: renamePlayer(state.players),
+        } satisfies FinishedState;
+      }
+
+      return state;
+    }
+
     case "game/setSecret": {
       const lobbyState = expectState(state, GameStatus.Lobby, action);
       const { playerId, cardId } = action.payload;

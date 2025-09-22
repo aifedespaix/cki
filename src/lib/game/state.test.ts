@@ -137,6 +137,48 @@ describe("reduceGameState", () => {
     ).toThrow(InvalidGameActionError);
   });
 
+  it("updates an existing player's name in the lobby", () => {
+    const lobby = createLobbyState();
+    const renamed = reduceGameState(lobby, {
+      type: "game/updatePlayerName",
+      payload: { playerId: hostId, name: "Nouvel Hôte" },
+    });
+
+    expect(selectPlayerById(renamed, hostId)?.name).toBe("Nouvel Hôte");
+  });
+
+  it("trims surrounding whitespace when updating a nickname", () => {
+    const lobby = createLobbyState();
+    const renamed = reduceGameState(lobby, {
+      type: "game/updatePlayerName",
+      payload: { playerId: guestId, name: "  Invité  " },
+    });
+
+    expect(selectPlayerById(renamed, guestId)?.name).toBe("Invité");
+  });
+
+  it("preserves the current game when renaming during a match", () => {
+    const playing = createPlayingState();
+    const renamed = reduceGameState(playing, {
+      type: "game/updatePlayerName",
+      payload: { playerId: guestId, name: "Invité Renommé" },
+    });
+
+    expect(renamed.status).toBe(GameStatus.Playing);
+    expect(renamed.turn).toBe(1);
+    expect(selectPlayerById(renamed, guestId)?.name).toBe("Invité Renommé");
+  });
+
+  it("rejects renaming an unknown player", () => {
+    const lobby = createLobbyState();
+    expect(() =>
+      reduceGameState(lobby, {
+        type: "game/updatePlayerName",
+        payload: { playerId: "missing", name: "Intrus" },
+      }),
+    ).toThrow(InvalidGameActionError);
+  });
+
   it("enforces secret selection before starting the game", () => {
     const lobby = createLobbyState();
     const withHostSecret = reduceGameState(lobby, {
