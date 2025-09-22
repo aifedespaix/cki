@@ -287,6 +287,7 @@ function InviteDialog({
   host,
   canShare,
   allowJoin,
+  canJoinAsPlayer,
   onJoin,
   isJoining,
 }: {
@@ -295,6 +296,7 @@ function InviteDialog({
   host: HostIdentitySummary | null;
   canShare: boolean;
   allowJoin: boolean;
+  canJoinAsPlayer: boolean;
   onJoin: (nickname: string) => void;
   isJoining: boolean;
 }) {
@@ -401,6 +403,7 @@ function InviteDialog({
     ? "Erreur lors de la génération du lien"
     : "Le lien apparaîtra ici dès qu’il est prêt.";
   const hostName = host?.name ?? "Hôte";
+  const isSubmitting = isJoining;
 
   return (
     <Dialog>
