@@ -48,10 +48,10 @@ export default function Home() {
         <div className="space-y-6">
           <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
             <SparklesIcon aria-hidden="true" className="size-4" />
-            Votre salle de commande KeyS
+            Votre salle de commande « C ki ? »
           </div>
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            Orchestrez vos parties KeyS, du mobile au bureau
+            Orchestrez vos parties « C ki ? », du mobile au bureau
           </h1>
           <p className="text-base text-muted-foreground sm:text-lg">
             Centralisez la création des salles, pilotez les joueurs et gardez un

@@ -2,7 +2,7 @@
 
 ## 🎯 Purpose of this document
 
-This file defines **the agents** involved in the **KeyS project** (a "Guess Who?"-style game playable as a PWA, full browser, P2P via PeerJS).  
+This file defines **the agents** involved in the **C ki ? project** (a "Guess Who?"-style game playable as a PWA, full browser, P2P via PeerJS).
 Each agent (human, tool, automation) has a specific role. The goal is to ensure **clarity, maintainability, productivity**, and **robustness** in the development cycle.
 
 ---

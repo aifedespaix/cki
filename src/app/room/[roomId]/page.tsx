@@ -1234,7 +1234,7 @@ export default function RoomPage() {
             <div className="space-y-2">
               <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
                 <UsersIcon aria-hidden className="size-4" />
-                Salle KeyS
+                Salle « C ki ? »
               </div>
               <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
                 Salle {roomId}

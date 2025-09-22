@@ -1,5 +1,5 @@
 /**
- * Core domain types for the Guess Who-style KeyS game.
+ * Core domain types for the Guess Who-style « C ki ? » game.
  *
  * The goal is to keep the data contracts explicit, serialisable and easy to validate.
  * Each exported type is paired with a runtime schema in {@link schema.ts}.

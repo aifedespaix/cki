@@ -1,4 +1,4 @@
-# KeyS UX Changes Brief
+# C ki ? UX Changes Brief
 
 _Last updated: 2025-09-22 by product UX agent._
 
@@ -93,7 +93,7 @@ Textual wireframes describe the content and interaction stack. Use them as accep
    - Sticky under 640 px, static otherwise.
 2. **Hero block** (`space-y-5`, max width 720 px)
    - Pill label with `SparklesIcon` → “Configuration de la grille”.
-   - `h1`: “Créez votre plateau KeyS personnalisé”.
+   - `h1`: “Créez votre plateau personnalisé pour « C ki ? »”.
    - Paragraph emphasising privacy and instant sharing.
    - Feature bullets row (grid dimensions, image sourcing, autosave cue). Collapses to stacked list on mobile.
 3. **Identity form card**
@@ -113,7 +113,7 @@ Textual wireframes describe the content and interaction stack. Use them as accep
 ### 3.2 Game Screen (`/room/[roomId]`)
 
 1. **Header bar**
-   - Left: room name (fallback “Salle KeyS”) with badge for connection status (`connecté`, `reconnexion`, `erreur`).
+   - Left: room name (fallback “Salle « C ki ? »”) with badge for connection status (`connecté`, `reconnexion`, `erreur`).
    - Center (desktop only): turn timer chip with `TimerIcon` when timer active.
    - Right: icon buttons (Invite, Participants, Règles) + dropdown for settings.
    - On mobile, collapse into overflow menu except for Invite.
