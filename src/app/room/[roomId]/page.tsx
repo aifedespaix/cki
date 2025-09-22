@@ -4,6 +4,7 @@ import {
   AlertCircleIcon,
   ArrowRightIcon,
   CheckCircle2Icon,
+  CopyIcon,
   CrownIcon,
   EyeIcon,
   EyeOffIcon,
@@ -49,6 +50,7 @@ import {
   type Player,
   PlayerRole,
 } from "@/lib/game/types";
+import { buildInviteUrl, encodeGridToToken } from "@/lib/share/url";
 import type { HostPreparationRecord } from "@/lib/storage/session";
 import { loadHostPreparation } from "@/lib/storage/session";
 import { cn } from "@/lib/utils";
@@ -106,6 +108,205 @@ const getConclusionLabel = (reason: GameConclusionReason): string => {
       return reason;
   }
 };
+
+type CopyStatus = "idle" | "copied" | "error";
+
+function InviteLinkCard({ grid }: { grid: Grid | null }) {
+  const [origin, setOrigin] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<CopyStatus>("idle");
+  const [copyError, setCopyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    setOrigin(window.location.origin);
+  }, []);
+
+  const sharePayload = useMemo(() => {
+    if (!grid) {
+      return { token: null as string | null, error: null as string | null };
+    }
+    try {
+      const token = encodeGridToToken(grid);
+      return { token, error: null };
+    } catch (error) {
+      console.error("Impossible de générer le token d’invitation.", error);
+      return {
+        token: null,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Erreur inconnue lors de la génération du token.",
+      };
+    }
+  }, [grid]);
+
+  const inviteUrl = useMemo(() => {
+    if (!sharePayload.token || !origin) {
+      return null;
+    }
+    try {
+      return buildInviteUrl(origin, sharePayload.token);
+    } catch (error) {
+      console.error("Impossible de construire l’URL d’invitation.", error);
+      return null;
+    }
+  }, [origin, sharePayload.token]);
+
+  useEffect(() => {
+    if (inviteUrl === null) {
+      setCopyStatus("idle");
+      setCopyError(null);
+      return;
+    }
+    setCopyStatus("idle");
+    setCopyError(null);
+  }, [inviteUrl]);
+
+  useEffect(() => {
+    if (copyStatus !== "copied") {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      setCopyStatus("idle");
+    }, 2500);
+    return () => window.clearTimeout(timeout);
+  }, [copyStatus]);
+
+  const handleCopy = useCallback(async () => {
+    if (!inviteUrl) {
+      return;
+    }
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.clipboard ||
+      typeof navigator.clipboard.writeText !== "function"
+    ) {
+      setCopyStatus("error");
+      setCopyError(
+        "Copie automatique indisponible : sélectionnez le lien et copiez-le manuellement.",
+      );
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setCopyStatus("copied");
+      setCopyError(null);
+    } catch (error) {
+      console.error("Impossible de copier le lien d’invitation.", error);
+      setCopyStatus("error");
+      setCopyError(
+        "Impossible de copier automatiquement le lien. Sélectionnez-le et copiez-le manuellement.",
+      );
+    }
+  }, [inviteUrl]);
+
+  if (!grid) {
+    return null;
+  }
+
+  const hasTokenError = Boolean(sharePayload.error);
+  const invitePlaceholder = hasTokenError
+    ? "Erreur lors de la génération du lien"
+    : "Le lien apparaîtra ici dès qu’il est prêt.";
+
+  return (
+    <Card className="border border-border/70">
+      <CardHeader>
+        <CardTitle>Inviter un adversaire</CardTitle>
+        <CardDescription>
+          Envoyez ce lien à vos amis : il ouvre automatiquement la page «
+          Rejoindre » avec le plateau « {grid.name} » prêt à l’emploi.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <label
+            htmlFor="invite-link"
+            className="text-sm font-medium text-foreground"
+          >
+            Lien d’invitation
+          </label>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+            <input
+              id="invite-link"
+              type="text"
+              value={inviteUrl ?? ""}
+              readOnly
+              placeholder={invitePlaceholder}
+              onFocus={(event) => event.currentTarget.select()}
+              spellCheck={false}
+              className="w-full flex-1 rounded-md border border-border/70 bg-background px-3 py-2 text-xs font-mono shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
+              aria-invalid={hasTokenError || copyStatus === "error"}
+              aria-describedby={
+                hasTokenError
+                  ? "invite-link-error"
+                  : copyStatus === "error" && copyError
+                    ? "invite-link-copy-error"
+                    : undefined
+              }
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCopy}
+              disabled={!inviteUrl}
+              className="sm:w-auto sm:flex-none"
+            >
+              {copyStatus === "copied" ? (
+                <>
+                  <CheckCircle2Icon aria-hidden className="mr-2 size-4" />
+                  Lien copié
+                </>
+              ) : (
+                <>
+                  <CopyIcon aria-hidden className="mr-2 size-4" />
+                  Copier
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+        {sharePayload.token ? (
+          <p className="text-xs text-muted-foreground">
+            Token brut :{" "}
+            <code className="break-all rounded bg-muted px-1 py-0.5">
+              {sharePayload.token}
+            </code>
+          </p>
+        ) : null}
+        {hasTokenError ? (
+          <div
+            id="invite-link-error"
+            className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            aria-live="polite"
+          >
+            <AlertCircleIcon aria-hidden className="mt-0.5 size-4" />
+            <span>
+              Impossible de générer le lien d’invitation. {sharePayload.error}
+            </span>
+          </div>
+        ) : (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <ArrowRightIcon aria-hidden className="size-4" />
+            Les invités peuvent ouvrir ce lien sur n’importe quel appareil pour
+            importer automatiquement votre plateau.
+          </p>
+        )}
+        {copyStatus === "error" && copyError ? (
+          <p
+            id="invite-link-copy-error"
+            className="text-sm text-destructive"
+            aria-live="polite"
+          >
+            {copyError}
+          </p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
 function ParticipantChip({ summary }: { summary: PlayerSummary }) {
   const { player, ready, isLocal, isActive } = summary;
   return (
@@ -934,6 +1135,8 @@ export default function RoomPage() {
           Gérez les plateaux, les joueurs et le déroulement de la partie.
         </p>
       </section>
+
+      <InviteLinkCard grid={hostPreparation?.grid ?? null} />
 
       <ParticipantBanner
         players={playerSummaries}
