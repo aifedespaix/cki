@@ -185,18 +185,25 @@ describe("reduceGameState", () => {
     ).toThrow(InvalidGameActionError);
   });
 
-  it("flips cards deterministically and is idempotent", () => {
+  it("allows toggling cards on repeated flips", () => {
     const playing = createPlayingState();
     const action = {
       type: "turn/flipCard" as const,
       payload: { playerId: hostId, cardId: "card-b" },
     };
-    const afterFirstFlip = reduceGameState(playing, action);
-    const afterSecondFlip = reduceGameState(afterFirstFlip, action);
 
-    const activePlayer = selectActivePlayer(afterFirstFlip);
-    expect(activePlayer?.flippedCardIds).toEqual(["card-b"]);
-    expect(afterSecondFlip).toBe(afterFirstFlip);
+    const afterFirstFlip = reduceGameState(playing, action);
+    expect(selectActivePlayer(afterFirstFlip)?.flippedCardIds).toEqual([
+      "card-b",
+    ]);
+
+    const afterSecondFlip = reduceGameState(afterFirstFlip, action);
+    expect(selectActivePlayer(afterSecondFlip)?.flippedCardIds).toEqual([]);
+
+    const afterThirdFlip = reduceGameState(afterSecondFlip, action);
+    expect(selectActivePlayer(afterThirdFlip)?.flippedCardIds).toEqual([
+      "card-b",
+    ]);
   });
 
   it("changes the active player when ending a turn", () => {

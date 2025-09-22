@@ -24,20 +24,13 @@ import {
   loadGridDraft,
   saveGridDraft,
 } from "@/lib/storage/db";
+import { createRandomId } from "@/lib/utils";
 
 import { CardEditorItem } from "./CardEditorItem";
 import { GridPreview } from "./GridPreview";
 
 const MIN_DIMENSION = 2;
 const MAX_DIMENSION = 8;
-
-const createRandomId = (prefix: string): string => {
-  const randomSegment =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID().slice(0, 8)
-      : Math.random().toString(36).slice(2, 10);
-  return `${prefix}-${randomSegment}`;
-};
 
 const createCard = (index: number): GameCard => ({
   id: createRandomId("card"),

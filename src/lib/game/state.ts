@@ -302,15 +302,28 @@ export const reduceGameState = (
           `Player "${playerId}" is not part of the match`,
         );
       }
+      const alreadyHidden = player.flippedCardIds.includes(cardId);
+      if (alreadyHidden) {
+        const updatedPlayer: Player = {
+          ...player,
+          flippedCardIds: player.flippedCardIds.filter((id) => id !== cardId),
+        };
+
+        const players = playingState.players.map((current, index) =>
+          index === playerIndex ? updatedPlayer : current,
+        );
+
+        return {
+          ...playingState,
+          players,
+        } satisfies PlayingState;
+      }
+
       assert(
         player.secretCardId !== cardId,
         action,
         "A player cannot flip their own secret card",
       );
-
-      if (player.flippedCardIds.includes(cardId)) {
-        return playingState;
-      }
 
       const updatedPlayer: Player = {
         ...player,
