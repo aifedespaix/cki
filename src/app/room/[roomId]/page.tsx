@@ -13,6 +13,7 @@ import {
   ShuffleIcon,
   TargetIcon,
   TimerIcon,
+  UserCogIcon,
   UserIcon,
   UsersIcon,
 } from "lucide-react";
@@ -1297,6 +1298,188 @@ function PlayerBoard({
   );
 }
 
+interface RoleSelectionSummary {
+  name: string;
+  details: string;
+}
+
+interface RoleSelectionScreenProps {
+  gridSummary: RoleSelectionSummary | null;
+  isAlreadyPlayer: boolean;
+  isViewingAsSpectator: boolean;
+  playerName: string | null;
+  playerRole: PlayerRole | null;
+  nickname: string;
+  canJoinAsPlayer: boolean;
+  isJoining: boolean;
+  error: string | null;
+  onNicknameChange(value: string): void;
+  onConfirmPlayer(): void;
+  onConfirmSpectator(): void;
+}
+
+function RoleSelectionScreen({
+  gridSummary,
+  isAlreadyPlayer,
+  isViewingAsSpectator,
+  playerName,
+  playerRole,
+  nickname,
+  canJoinAsPlayer,
+  isJoining,
+  error,
+  onNicknameChange,
+  onConfirmPlayer,
+  onConfirmSpectator,
+}: RoleSelectionScreenProps) {
+  const trimmedNickname = nickname.trim();
+  const playerLabel = playerRole ? roleLabels[playerRole] : null;
+  const joinDisabled =
+    !canJoinAsPlayer || trimmedNickname.length === 0 || isJoining;
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (joinDisabled) {
+      return;
+    }
+    onConfirmPlayer();
+  };
+
+  return (
+    <div className="full-height-page flex min-h-0 flex-1 flex-col items-center justify-center gap-10 py-12">
+      <section className="flex flex-col items-center gap-3 text-center">
+        <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+          <UsersIcon aria-hidden className="size-4" />
+          Sélection du rôle
+        </div>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          Comment souhaitez-vous participer ?
+        </h1>
+        <p className="max-w-2xl text-base text-muted-foreground sm:text-lg">
+          Choisissez de rejoindre la salle comme joueur actif ou d’observer la
+          partie sans manipuler les plateaux.
+        </p>
+        {gridSummary ? (
+          <p className="text-sm text-muted-foreground">
+            Plateau « {gridSummary.name} » — {gridSummary.details}
+          </p>
+        ) : null}
+      </section>
+
+      <div className="grid w-full max-w-4xl gap-6 md:grid-cols-2">
+        <Card className="border border-border/70">
+          <CardHeader>
+            <CardTitle>Rejoindre en tant que joueur</CardTitle>
+            <CardDescription>
+              Affrontez votre adversaire en manipulant votre plateau dédié.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {isAlreadyPlayer ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Vous participez déjà en tant que
+                  {playerLabel ? ` ${playerLabel.toLowerCase()}` : " joueur"}
+                  {playerName ? ` « ${playerName} »` : ""}.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {isViewingAsSpectator
+                    ? "Sélectionnez « Revenir en tant que joueur » pour reprendre le contrôle de votre plateau sur cet appareil."
+                    : "Sélectionnez « Continuer en tant que joueur » pour accéder à votre plateau et finaliser la préparation."}
+                </p>
+                <Button type="button" onClick={onConfirmPlayer}>
+                  <UsersIcon aria-hidden className="mr-2 size-4" />
+                  {isViewingAsSpectator
+                    ? "Revenir en tant que joueur"
+                    : "Continuer en tant que joueur"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Prenez la prochaine place disponible pour affronter l’hôte.
+                </p>
+                <form className="space-y-4" onSubmit={handleSubmit}>
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="role-selection-nickname"
+                      className="text-sm font-medium text-foreground"
+                    >
+                      Votre pseudo
+                    </label>
+                    <input
+                      id="role-selection-nickname"
+                      type="text"
+                      value={nickname}
+                      onChange={(event) => onNicknameChange(event.target.value)}
+                      className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      placeholder="Invité mystère"
+                      maxLength={40}
+                      autoComplete="off"
+                      disabled={!canJoinAsPlayer || isJoining}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Ce pseudo identifie votre plateau pendant la partie.
+                    </p>
+                  </div>
+                  {error ? (
+                    <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      {error}
+                    </div>
+                  ) : null}
+                  {!canJoinAsPlayer ? (
+                    <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                      Les deux places de joueur sont déjà occupées. Choisissez
+                      le mode spectateur pour suivre la partie.
+                    </div>
+                  ) : null}
+                  <Button type="submit" disabled={joinDisabled}>
+                    <UsersIcon aria-hidden className="mr-2 size-4" />
+                    {isJoining ? "Connexion…" : "Rejoindre la partie"}
+                  </Button>
+                </form>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border/70">
+          <CardHeader>
+            <CardTitle>Observer la partie</CardTitle>
+            <CardDescription>
+              Suivez le déroulement en direct sans intervenir sur les plateaux.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Visualisez les cartes retournées en temps réel et les actions des
+              joueurs sans impacter la partie. Vous pourrez tenter de rejoindre
+              plus tard si une place se libère.
+            </p>
+            {isAlreadyPlayer && !isViewingAsSpectator ? (
+              <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                Passer en mode spectateur désactive les interactions avec votre
+                plateau sur cet appareil. Vous pourrez redevenir joueur à tout
+                moment.
+              </div>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onConfirmSpectator}
+            >
+              <EyeIcon aria-hidden className="mr-2 size-4" />
+              {isViewingAsSpectator
+                ? "Continuer en spectateur"
+                : "Observer la partie"}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 function MissingOpponentBoard({ grid }: { grid: Grid | null }) {
   return (
     <Card className="flex h-full flex-col border-dashed border-border/70 bg-muted/20">
@@ -1382,6 +1565,12 @@ export default function RoomPage() {
   const [localGuestId] = useState(() => createRandomId("player"));
   const [localGuestName, setLocalGuestName] = useState<string | null>(null);
   const [isJoiningLobby, setIsJoiningLobby] = useState(false);
+  const [isRoleSelectionOpen, setIsRoleSelectionOpen] = useState(true);
+  const [viewAsSpectator, setViewAsSpectator] = useState(false);
+  const [roleSelectionNickname, setRoleSelectionNickname] = useState("");
+  const [roleSelectionError, setRoleSelectionError] = useState<string | null>(
+    null,
+  );
   const resolvedPeerRole = useMemo<PeerRole | null>(() => {
     if (loadState !== "ready") {
       return null;
@@ -1808,30 +1997,61 @@ export default function RoomPage() {
       setLocalGuestName(null);
     }
   }, [players, hostPreparation, inviteContext, localGuestId, localGuestName]);
-  const localPlayerId = hostPreparation
+  const canonicalLocalPlayerId = hostPreparation
     ? hostPreparation.hostId
     : localGuestName
       ? localGuestId
       : null;
-  const localPlayer = useMemo(() => {
-    if (!localPlayerId) {
+  const canonicalLocalPlayer = useMemo(() => {
+    if (!canonicalLocalPlayerId) {
       return null;
     }
-    return players.find((player) => player.id === localPlayerId) ?? null;
-  }, [players, localPlayerId]);
-  const isSpectatorView = !localPlayer;
+    return (
+      players.find((player) => player.id === canonicalLocalPlayerId) ?? null
+    );
+  }, [players, canonicalLocalPlayerId]);
+  const canonicalLocalPlayerName = canonicalLocalPlayer?.name ?? null;
+  const canonicalLocalPlayerRole = canonicalLocalPlayer?.role ?? null;
+  useEffect(() => {
+    if (!isRoleSelectionOpen) {
+      return;
+    }
+    if (canonicalLocalPlayerName) {
+      setRoleSelectionNickname(canonicalLocalPlayerName);
+      return;
+    }
+    if (localGuestName) {
+      setRoleSelectionNickname(localGuestName);
+    }
+  }, [isRoleSelectionOpen, canonicalLocalPlayerName, localGuestName]);
+  const effectiveLocalPlayerId = viewAsSpectator
+    ? null
+    : canonicalLocalPlayerId;
+  const localPlayer = useMemo(() => {
+    if (!effectiveLocalPlayerId) {
+      return null;
+    }
+    return (
+      players.find((player) => player.id === effectiveLocalPlayerId) ?? null
+    );
+  }, [players, effectiveLocalPlayerId]);
+  const isSpectatorView = viewAsSpectator || !localPlayer;
 
   const orderedPlayers = useMemo(() => {
-    if (!localPlayerId) {
+    if (!effectiveLocalPlayerId) {
       return players;
     }
-    const local = players.find((player) => player.id === localPlayerId);
+    const local = players.find(
+      (player) => player.id === effectiveLocalPlayerId,
+    );
     if (!local) {
       return players;
     }
-    const others = players.filter((player) => player.id !== localPlayerId);
+    const others = players.filter(
+      (player) => player.id !== effectiveLocalPlayerId,
+    );
     return [local, ...others];
-  }, [players, localPlayerId]);
+  }, [players, effectiveLocalPlayerId]);
 
   const grid = useMemo(() => {
     if (gameState.status === GameStatus.Idle) {
@@ -1867,10 +2087,10 @@ export default function RoomPage() {
       players.map((player) => ({
         player,
         ready: isPlayerReady(gameState, player.id),
-        isLocal: localPlayerId === player.id,
+        isLocal: effectiveLocalPlayerId === player.id,
         isActive: activePlayerId === player.id,
       })),
-    [players, gameState, localPlayerId, activePlayerId],
+    [players, gameState, effectiveLocalPlayerId, activePlayerId],
   );
 
   const hostIdentityForInvite = useMemo(() => {
@@ -1922,6 +2142,45 @@ export default function RoomPage() {
     },
     [applyGameAction, localGuestId],
   );
+  const handleRoleSelectionNicknameChange = useCallback(
+    (value: string) => {
+      setRoleSelectionNickname(value);
+      if (roleSelectionError) {
+        setRoleSelectionError(null);
+      }
+    },
+    [roleSelectionError],
+  );
+  const handleConfirmSpectatorRole = useCallback(() => {
+    setViewAsSpectator(true);
+    setIsRoleSelectionOpen(false);
+    setRoleSelectionError(null);
+  }, []);
+  const handleConfirmPlayerRole = useCallback(() => {
+    if (canonicalLocalPlayer) {
+      setViewAsSpectator(false);
+      setIsRoleSelectionOpen(false);
+      setRoleSelectionError(null);
+      return;
+    }
+    try {
+      handleJoinAsGuest(roleSelectionNickname);
+      setViewAsSpectator(false);
+      setIsRoleSelectionOpen(false);
+      setRoleSelectionError(null);
+    } catch (error) {
+      setRoleSelectionError(
+        error instanceof Error
+          ? error.message
+          : "Impossible de rejoindre la salle. Réessayez dans un instant.",
+      );
+    }
+  }, [canonicalLocalPlayer, handleJoinAsGuest, roleSelectionNickname]);
+  const handleOpenRoleSelection = useCallback(() => {
+    setRoleSelectionNickname(canonicalLocalPlayerName ?? localGuestName ?? "");
+    setRoleSelectionError(null);
+    setIsRoleSelectionOpen(true);
+  }, [canonicalLocalPlayerName, localGuestName]);
 
   const handleSelectSecret = useCallback(
     (playerId: string, cardId: string) => {
@@ -2068,6 +2327,29 @@ export default function RoomPage() {
     return null;
   }
 
+  const roleSelectionGridSummary = {
+    name: grid.name,
+    details: `${grid.rows} × ${grid.columns} — ${grid.cards.length} cartes`,
+  } satisfies RoleSelectionSummary;
+  if (isRoleSelectionOpen) {
+    return (
+      <RoleSelectionScreen
+        gridSummary={roleSelectionGridSummary}
+        isAlreadyPlayer={Boolean(canonicalLocalPlayer)}
+        isViewingAsSpectator={isSpectatorView}
+        playerName={canonicalLocalPlayerName}
+        playerRole={canonicalLocalPlayerRole}
+        nickname={roleSelectionNickname}
+        canJoinAsPlayer={canJoinAsPlayer}
+        isJoining={isJoiningLobby}
+        error={roleSelectionError}
+        onNicknameChange={handleRoleSelectionNicknameChange}
+        onConfirmPlayer={handleConfirmPlayerRole}
+        onConfirmSpectator={handleConfirmSpectatorRole}
+      />
+    );
+  }
+
   const hostPlayerName =
     playerSummaries.find((summary) => summary.player.role === PlayerRole.Host)
       ?.player.name ??
@@ -2121,6 +2403,16 @@ export default function RoomPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-2"
+              onClick={handleOpenRoleSelection}
+            >
+              <UserCogIcon aria-hidden className="size-4" />
+              Changer de rôle
+            </Button>
             <ParticipantsDialog
               players={playerSummaries}
               spectators={spectators}
