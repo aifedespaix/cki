@@ -90,11 +90,14 @@ export default function CreatePage() {
     }
 
     setIsStarting(true);
-    router.push(`/room/${roomId}`).catch((navigationError) => {
+
+    try {
+      router.push(`/room/${roomId}`);
+    } catch (navigationError) {
       console.error("Navigation vers la salle échouée.", navigationError);
       setStartError("La redirection vers la salle a échoué. Réessayez.");
       setIsStarting(false);
-    });
+    }
   };
 
   return (
