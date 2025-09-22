@@ -100,7 +100,9 @@ export const processImage = async (
       reject,
     });
     try {
-      workerInstance.postMessage(request, [blob]);
+      // Les blobs ne font pas partie des objets transférables ;
+      // l’envoi sans liste de transfert évite l’erreur postMessage.
+      workerInstance.postMessage(request);
     } catch (error) {
       pendingRequests.delete(requestId);
       reject(
