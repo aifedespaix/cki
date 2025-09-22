@@ -10,6 +10,12 @@ import {
   useState,
 } from "react";
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -424,60 +430,7 @@ export const GridEditor = forwardRef<GridEditorHandle, GridEditorProps>(
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-2">
-                <label
-                  htmlFor="grid-name"
-                  className="text-sm font-medium text-foreground"
-                >
-                  Nom de la grille
-                </label>
-                <input
-                  id="grid-name"
-                  type="text"
-                  value={gridName}
-                  onChange={(event) => setGridName(event.target.value)}
-                  className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="Tournoi d’entraînement"
-                />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label
-                    htmlFor="grid-id"
-                    className="text-sm font-medium text-foreground"
-                  >
-                    Identifiant technique
-                  </label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={regenerateGridId}
-                    className="h-8 px-2 text-xs"
-                  >
-                    <RefreshCcwIcon
-                      aria-hidden="true"
-                      className="mr-1 size-3.5"
-                    />
-                    Régénérer
-                  </Button>
-                </div>
-                <input
-                  id="grid-id"
-                  type="text"
-                  value={gridId}
-                  onChange={(event) => setGridId(event.target.value)}
-                  className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="grid-tournoi"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Cet identifiant est intégré au lien partagé et aide à
-                  retrouver la grille.
-                </p>
-              </div>
-            </div>
-            <div className="grid gap-6 md:grid-cols-2">
+            <div className="grid gap-6 sm:grid-cols-2">
               <div className="space-y-2">
                 <label
                   htmlFor="grid-rows"
@@ -513,6 +466,74 @@ export const GridEditor = forwardRef<GridEditorHandle, GridEditorProps>(
                 />
               </div>
             </div>
+            <Accordion
+              type="single"
+              collapsible
+              className="w-full overflow-hidden rounded-md border border-border/70"
+            >
+              <AccordionItem value="advanced" className="border-b-0">
+                <AccordionTrigger className="px-4">
+                  Paramètres avancés
+                </AccordionTrigger>
+                <AccordionContent className="space-y-6 px-4">
+                  <p className="text-sm text-muted-foreground">
+                    Ajustez le nom public et l’identifiant technique si vous
+                    partagez plusieurs configurations.
+                  </p>
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="grid-name"
+                      className="text-sm font-medium text-foreground"
+                    >
+                      Nom de la grille
+                    </label>
+                    <input
+                      id="grid-name"
+                      type="text"
+                      value={gridName}
+                      onChange={(event) => setGridName(event.target.value)}
+                      className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      placeholder="Tournoi d’entraînement"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <label
+                        htmlFor="grid-id"
+                        className="text-sm font-medium text-foreground"
+                      >
+                        Identifiant technique
+                      </label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={regenerateGridId}
+                        className="h-8 px-2 text-xs"
+                      >
+                        <RefreshCcwIcon
+                          aria-hidden="true"
+                          className="mr-1 size-3.5"
+                        />
+                        Régénérer
+                      </Button>
+                    </div>
+                    <input
+                      id="grid-id"
+                      type="text"
+                      value={gridId}
+                      onChange={(event) => setGridId(event.target.value)}
+                      className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      placeholder="grid-tournoi"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Cet identifiant est intégré au lien partagé et aide à
+                      retrouver la grille.
+                    </p>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
             <p className="text-sm text-muted-foreground">
               La grille contiendra {rows * columns} cartes. Personnalisez-les en
               cliquant directement sur l’aperçu ci-dessous.
