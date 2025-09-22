@@ -18,7 +18,7 @@ import {
   UsersIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   type FormEvent,
   type ReactNode,
@@ -30,6 +30,11 @@ import {
   useState,
 } from "react";
 
+import {
+  type HeaderActionState,
+  type HeaderInviteActionStatus,
+  useHeaderActionRegistration,
+} from "@/components/app/HeaderActionsContext";
 import { ImageSafe } from "@/components/common/ImageSafe";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -276,7 +281,7 @@ const getConclusionLabel = (reason: GameConclusionReason): string => {
   }
 };
 
-type CopyStatus = "idle" | "copied" | "error";
+type CopyStatus = HeaderInviteActionStatus;
 
 interface HostIdentitySummary {
   id: string;
@@ -372,6 +377,8 @@ function InviteDialog({
     if (!inviteUrl) {
       return;
     }
+    setCopyError(null);
+    setCopyStatus("pending");
     if (
       typeof navigator === "undefined" ||
       !navigator.clipboard ||
@@ -395,6 +402,59 @@ function InviteDialog({
       );
     }
   }, [inviteUrl]);
+
+  const inviteHeaderAction = useMemo<HeaderActionState>(() => {
+    if (!canShare) {
+      return {};
+    }
+    const hasInviteGenerationError = Boolean(sharePayload.error);
+    const isInviteAvailable = Boolean(inviteUrl);
+    if (!hasInviteGenerationError && !isInviteAvailable) {
+      return {};
+    }
+
+    return {
+      invite: {
+        label: hasInviteGenerationError
+          ? "Lien indisponible"
+          : "Copier le lien",
+        ariaLabel: hasInviteGenerationError
+          ? "Le lien d’invitation est actuellement indisponible"
+          : "Copier le lien d’invitation de cette salle",
+        icon: CopyIcon,
+        onActivate: handleCopy,
+        status: hasInviteGenerationError ? "error" : copyStatus,
+        disabled:
+          hasInviteGenerationError ||
+          !isInviteAvailable ||
+          copyStatus === "pending",
+        pendingLabel: "Copie en cours…",
+        successLabel: "Lien copié",
+        errorLabel: hasInviteGenerationError ? "Lien indisponible" : undefined,
+        feedbackMessage:
+          copyStatus === "copied"
+            ? "Lien d’invitation copié dans le presse-papier."
+            : copyStatus === "error"
+              ? (copyError ??
+                "Impossible de copier automatiquement le lien d’invitation.")
+              : hasInviteGenerationError
+                ? `Impossible de générer le lien d’invitation : ${sharePayload.error}`
+                : null,
+        feedbackTone:
+          copyStatus === "error" || hasInviteGenerationError
+            ? "assertive"
+            : "polite",
+      },
+    };
+  }, [
+    canShare,
+    copyError,
+    copyStatus,
+    handleCopy,
+    inviteUrl,
+    sharePayload.error,
+  ]);
+  useHeaderActionRegistration(inviteHeaderAction);
 
   if (!grid) {
     return null;
@@ -460,13 +520,21 @@ function InviteDialog({
                 type="button"
                 variant="outline"
                 onClick={handleCopy}
-                disabled={!inviteUrl || !canShare}
+                disabled={!inviteUrl || !canShare || copyStatus === "pending"}
                 className="sm:w-auto sm:flex-none"
               >
                 {copyStatus === "copied" ? (
                   <>
                     <CheckCircle2Icon aria-hidden className="mr-2 size-4" />
                     Lien copié
+                  </>
+                ) : copyStatus === "pending" ? (
+                  <>
+                    <TimerIcon
+                      aria-hidden
+                      className="mr-2 size-4 animate-spin"
+                    />
+                    Copie…
                   </>
                 ) : (
                   <>
@@ -1544,6 +1612,7 @@ export default function RoomPage() {
   const rawRoomId = params?.roomId;
   const roomId = typeof rawRoomId === "string" ? rawRoomId : "";
   const searchParams = useSearchParams();
+  const router = useRouter();
   const hostNameParam = searchParams?.get("hostName") ?? null;
   const hostIdParam = searchParams?.get("hostId") ?? null;
 
@@ -2106,6 +2175,28 @@ export default function RoomPage() {
 
   const normalizedRoomId = roomId ? roomId : null;
   const canShareInvite = Boolean(hostPreparation);
+  const handleLeave = useCallback(() => {
+    if (typeof window !== "undefined") {
+      const shouldLeave = window.confirm(
+        "Voulez-vous quitter la salle ? Vous pourrez la rejoindre plus tard grâce au lien d’invitation.",
+      );
+      if (!shouldLeave) {
+        return;
+      }
+    }
+    router.push("/");
+  }, [router]);
+  const leaveHeaderAction = useMemo<HeaderActionState>(
+    () => ({
+      leave: {
+        label: "Quitter la salle",
+        ariaLabel: "Quitter la salle et revenir à l’accueil",
+        onActivate: handleLeave,
+      },
+    }),
+    [handleLeave],
+  );
+  useHeaderActionRegistration(leaveHeaderAction);
   const isInvitee = !hostPreparation && inviteContext !== null;
   const hasJoinedAsGuest = Boolean(localGuestName);
   const shouldShowJoinCard =

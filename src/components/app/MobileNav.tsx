@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-import { navigationItems } from "./Header";
+import { navigationItems } from "./navigation";
 import { QuickHelpDialog } from "./QuickHelpDialog";
 import { SessionPlannerSheet } from "./SessionPlannerSheet";
 import { ThemeToggle, useTheme } from "./ThemeProvider";
