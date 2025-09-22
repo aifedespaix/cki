@@ -5,16 +5,13 @@ import {
   ArrowRightIcon,
   CheckCircle2Icon,
   CopyIcon,
-  CrownIcon,
   EyeIcon,
   EyeOffIcon,
   InfoIcon,
   PlayIcon,
-  ShuffleIcon,
   TargetIcon,
   TimerIcon,
   UserCogIcon,
-  UserIcon,
   UsersIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -36,6 +33,9 @@ import {
   useHeaderActionRegistration,
 } from "@/components/app/HeaderActionsContext";
 import { ImageSafe } from "@/components/common/ImageSafe";
+import { ParticipantsSheet } from "@/components/room/ParticipantsSheet";
+import { TargetSelectionModal } from "@/components/room/TargetSelectionModal";
+import { TurnBar } from "@/components/room/TurnBar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -823,130 +823,6 @@ function JoinAsGuestForm({
     </form>
   );
 }
-function ParticipantChip({ summary }: { summary: PlayerSummary }) {
-  const { player, ready, isLocal, isActive } = summary;
-  return (
-    <Badge
-      key={player.id}
-      variant={isLocal ? "default" : ready ? "secondary" : "outline"}
-      className={cn(
-        "flex items-center gap-1 px-3 py-1 text-sm",
-        isActive ? "ring-2 ring-offset-1 ring-primary/60" : null,
-      )}
-      title={`${player.name} — ${roleLabels[player.role]}`}
-    >
-      {player.role === PlayerRole.Host ? (
-        <CrownIcon aria-hidden className="size-3.5" />
-      ) : (
-        <UserIcon aria-hidden className="size-3.5" />
-      )}
-      <span className="font-medium">{player.name}</span>
-      {ready ? (
-        <CheckCircle2Icon aria-hidden className="size-3 text-emerald-500" />
-      ) : null}
-      {isLocal ? <span className="text-xs">(vous)</span> : null}
-    </Badge>
-  );
-}
-
-function ParticipantsDialog({
-  players,
-  spectators,
-  status,
-  turn,
-  activePlayerName,
-}: {
-  players: PlayerSummary[];
-  spectators: readonly Spectator[];
-  status: GameStatus;
-  turn: number | null;
-  activePlayerName: string | null;
-}) {
-  const playerCount = players.length;
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="flex items-center gap-2"
-        >
-          <UsersIcon aria-hidden className="size-4" />
-          Participants ({playerCount}/2)
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Joueurs et spectateurs</DialogTitle>
-          <DialogDescription>
-            Consultez l’état des connexions en temps réel.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-6">
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              <UsersIcon aria-hidden className="size-4" />
-              Joueurs connectés ({playerCount}/2)
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {playerCount > 0 ? (
-                players.map((summary) => (
-                  <ParticipantChip key={summary.player.id} summary={summary} />
-                ))
-              ) : (
-                <span className="text-sm text-muted-foreground">
-                  Aucun joueur connecté pour le moment.
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-1">
-              <span className="text-xs font-semibold uppercase text-muted-foreground">
-                État
-              </span>
-              <p className="text-sm font-medium text-foreground">
-                {formatStatusLabel(status)}
-              </p>
-            </div>
-            <div className="space-y-1">
-              <span className="text-xs font-semibold uppercase text-muted-foreground">
-                Tour actuel
-              </span>
-              <p className="text-sm text-foreground">
-                {turn !== null
-                  ? `Tour ${turn}${
-                      activePlayerName ? ` — ${activePlayerName}` : ""
-                    }`
-                  : "En attente de préparation"}
-              </p>
-            </div>
-          </div>
-          <div className="space-y-2 border-t border-border/60 pt-4">
-            <span className="text-xs font-semibold uppercase text-muted-foreground">
-              Spectateurs ({spectators.length})
-            </span>
-            {spectators.length > 0 ? (
-              <ul className="flex flex-wrap gap-2">
-                {spectators.map((spectator) => (
-                  <li key={spectator.id}>
-                    <Badge variant="secondary">{spectator.name}</Badge>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Aucun spectateur connecté pour le moment.
-              </p>
-            )}
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function RoomInformationDialog({
   roomId,
   grid,
@@ -1060,7 +936,7 @@ interface CardTileProps {
   disabled: boolean;
   onClick?: () => void;
   actionLabel?: string;
-  interactionType: "toggle" | "select" | "none";
+  interactionType: "toggle" | "none";
 }
 
 function CardTile({
@@ -1073,12 +949,7 @@ function CardTile({
   interactionType,
 }: CardTileProps) {
   const label = actionLabel ?? card.label;
-  const ariaPressed =
-    interactionType === "toggle"
-      ? hidden
-      : interactionType === "select" && showSecretBadge
-        ? true
-        : undefined;
+  const ariaPressed = interactionType === "toggle" ? hidden : undefined;
 
   const content = (
     <div className="flex flex-col gap-2 rounded-md border border-border/60 bg-background/90 p-3 shadow-sm transition-colors hover:border-border">
@@ -1158,10 +1029,8 @@ interface PlayerBoardProps {
   secretCard: GameCard | null;
   showSecretCard: boolean;
   allowSecretSelection: boolean;
-  allowRandomSecret: boolean;
   allowCardToggle: boolean;
-  onSelectSecret(cardId: string): void;
-  onRandomSecret(): void;
+  onRequestSecretSelection?: () => void;
   onToggleCard(cardId: string): void;
   status: GameStatus;
   isLocal: boolean;
@@ -1178,10 +1047,8 @@ function PlayerBoard({
   secretCard,
   showSecretCard,
   allowSecretSelection,
-  allowRandomSecret,
   allowCardToggle,
-  onSelectSecret,
-  onRandomSecret,
+  onRequestSecretSelection,
   onToggleCard,
   status,
   isLocal,
@@ -1194,22 +1061,9 @@ function PlayerBoard({
     [grid.columns],
   );
 
-  const interactionType: "toggle" | "select" | "none" = allowCardToggle
+  const interactionType: "toggle" | "none" = allowCardToggle
     ? "toggle"
-    : allowSecretSelection
-      ? "select"
-      : "none";
-
-  const handleCardInteraction = useCallback(
-    (cardId: string) => {
-      if (interactionType === "toggle") {
-        onToggleCard(cardId);
-      } else if (interactionType === "select") {
-        onSelectSecret(cardId);
-      }
-    },
-    [interactionType, onToggleCard, onSelectSecret],
-  );
+    : "none";
 
   const hiddenCount = hiddenCardIds.size;
 
@@ -1227,8 +1081,8 @@ function PlayerBoard({
   } else if (allowSecretSelection) {
     secretContent = (
       <p className="text-sm text-muted-foreground">
-        Choisissez une carte en cliquant sur le plateau ou utilisez la sélection
-        aléatoire.
+        Choisissez une carte secrète à l’aide du sélecteur dédié pour pouvoir
+        démarrer la partie.
       </p>
     );
   } else {
@@ -1294,16 +1148,13 @@ function PlayerBoard({
               <TargetIcon aria-hidden className="size-4 text-primary" />
               Carte secrète
             </h3>
-            {allowSecretSelection ? (
+            {allowSecretSelection && onRequestSecretSelection ? (
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
-                onClick={onRandomSecret}
-                disabled={!allowRandomSecret}
+                onClick={onRequestSecretSelection}
               >
-                <ShuffleIcon aria-hidden className="mr-2 size-4" />
-                Aléatoire
+                {secretCard ? "Modifier" : "Choisir"} la carte secrète
               </Button>
             ) : null}
           </div>
@@ -1342,9 +1193,11 @@ function PlayerBoard({
                     ? hidden
                       ? `Révéler ${card.label}`
                       : `Masquer ${card.label}`
-                    : interactionType === "select"
-                      ? `Sélectionner ${card.label} comme carte secrète`
-                      : card.label;
+                    : card.label;
+                const handleClick =
+                  interactionType === "toggle"
+                    ? () => onToggleCard(card.id)
+                    : undefined;
                 return (
                   <li key={card.id} className="list-none">
                     <CardTile
@@ -1352,7 +1205,7 @@ function PlayerBoard({
                       hidden={hidden}
                       showSecretBadge={showSecret}
                       disabled={disabled}
-                      onClick={() => handleCardInteraction(card.id)}
+                      onClick={handleClick}
                       actionLabel={actionLabel}
                       interactionType={interactionType}
                     />
@@ -1624,7 +1477,12 @@ export default function RoomPage() {
     createInitialState(),
   );
   const [actionError, setActionError] = useState<string | null>(null);
-  const [spectators] = useState<readonly Spectator[]>([]);
+  const [spectators, setSpectators] = useState<readonly Spectator[]>([]);
+  const [secretSelectionPlayerId, setSecretSelectionPlayerId] = useState<
+    string | null
+  >(null);
+  const [hasPromptedSecretSelection, setHasPromptedSecretSelection] =
+    useState(false);
   const [inviteContext, setInviteContext] = useState<InviteContext | null>(
     null,
   );
@@ -2082,6 +1940,7 @@ export default function RoomPage() {
   }, [players, canonicalLocalPlayerId]);
   const canonicalLocalPlayerName = canonicalLocalPlayer?.name ?? null;
   const canonicalLocalPlayerRole = canonicalLocalPlayer?.role ?? null;
+  const isLocalHost = canonicalLocalPlayerRole === PlayerRole.Host;
   useEffect(() => {
     if (!isRoleSelectionOpen) {
       return;
@@ -2133,6 +1992,41 @@ export default function RoomPage() {
     return gameState.grid;
   }, [gameState, hostPreparation, inviteContext]);
 
+  useEffect(() => {
+    const selectableCardCount = grid?.cards.length ?? 0;
+    const hasSelectableCards = selectableCardCount > 0;
+
+    if (!localPlayer || isSpectatorView || !hasSelectableCards) {
+      if (secretSelectionPlayerId) {
+        setSecretSelectionPlayerId(null);
+      }
+      setHasPromptedSecretSelection(false);
+      return;
+    }
+
+    const needsSecretSelection =
+      gameState.status === GameStatus.Lobby && !localPlayer.secretCardId;
+
+    if (needsSecretSelection) {
+      if (!hasPromptedSecretSelection) {
+        setSecretSelectionPlayerId((current) => current ?? localPlayer.id);
+        setHasPromptedSecretSelection(true);
+      }
+      return;
+    }
+
+    if (hasPromptedSecretSelection) {
+      setHasPromptedSecretSelection(false);
+    }
+  }, [
+    gameState.status,
+    grid,
+    hasPromptedSecretSelection,
+    isSpectatorView,
+    localPlayer,
+    secretSelectionPlayerId,
+  ]);
+
   const cardLookup = useMemo(() => {
     if (!grid) {
       return new Map<string, GameCard>();
@@ -2152,7 +2046,7 @@ export default function RoomPage() {
       ? gameState.turn
       : null;
 
-  const playerSummaries = useMemo(
+  const playerSummaries = useMemo<PlayerSummary[]>(
     () =>
       players.map((player) => ({
         player,
@@ -2287,27 +2181,22 @@ export default function RoomPage() {
     [applyGameAction],
   );
 
-  const handleRandomSecret = useCallback(
-    (player: Player) => {
-      if (!grid || grid.cards.length === 0) {
-        setActionError(
-          "Aucune carte n’est disponible pour la sélection aléatoire.",
-        );
+  const handleConfirmSecretSelection = useCallback(
+    (cardId: string) => {
+      if (!secretSelectionPlayerId) {
         return;
       }
-      const index = Math.floor(Math.random() * grid.cards.length);
-      const randomCard = grid.cards[index];
-      if (!randomCard) {
-        setActionError("Aucune carte n’a pu être sélectionnée.");
-        return;
-      }
-      applyGameAction({
-        type: "game/setSecret",
-        payload: { playerId: player.id, cardId: randomCard.id },
-      });
+      handleSelectSecret(secretSelectionPlayerId, cardId);
+      setSecretSelectionPlayerId(null);
     },
-    [applyGameAction, grid],
+    [handleSelectSecret, secretSelectionPlayerId],
   );
+
+  const handleSecretSelectionOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      setSecretSelectionPlayerId(null);
+    }
+  }, []);
 
   const handleToggleCard = useCallback(
     (playerId: string, cardId: string) => {
@@ -2317,6 +2206,84 @@ export default function RoomPage() {
       });
     },
     [applyGameAction],
+  );
+
+  const handlePromoteSpectator = useCallback(
+    (spectatorId: string) => {
+      if (!isLocalHost) {
+        return;
+      }
+      const spectator = spectators.find((entry) => entry.id === spectatorId);
+      if (!spectator) {
+        setActionError("Spectateur introuvable.");
+        return;
+      }
+      if (gameState.status !== GameStatus.Lobby) {
+        setActionError(
+          "La promotion n’est possible que pendant la phase de préparation.",
+        );
+        return;
+      }
+      if (players.length >= 2) {
+        setActionError(
+          "Les deux places de joueur sont déjà occupées. Libérez une place avant de promouvoir un spectateur.",
+        );
+        return;
+      }
+      try {
+        applyGameAction({
+          type: "game/joinLobby",
+          payload: {
+            player: { id: spectator.id, name: spectator.name },
+          },
+        });
+        setSpectators((current) =>
+          current.filter((entry) => entry.id !== spectatorId),
+        );
+      } catch (error) {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Impossible de promouvoir ce spectateur.",
+        );
+      }
+    },
+    [
+      applyGameAction,
+      gameState.status,
+      isLocalHost,
+      players.length,
+      spectators,
+    ],
+  );
+
+  const handleKickSpectator = useCallback(
+    (spectatorId: string) => {
+      if (!isLocalHost) {
+        return;
+      }
+      setSpectators((current) =>
+        current.filter((spectator) => spectator.id !== spectatorId),
+      );
+    },
+    [isLocalHost],
+  );
+
+  const handleKickPlayer = useCallback(
+    (playerId: string) => {
+      if (!isLocalHost) {
+        return;
+      }
+      const target = players.find((player) => player.id === playerId);
+      if (!target) {
+        setActionError("Participant introuvable.");
+        return;
+      }
+      setActionError(
+        `L’expulsion de ${target.name} n’est pas encore disponible dans cette version de l’application.`,
+      );
+    },
+    [isLocalHost, players],
   );
 
   const handleStartGame = useCallback(() => {
@@ -2448,6 +2415,12 @@ export default function RoomPage() {
     hostIdentityForInvite?.name ??
     null;
 
+  const statusLabel = formatStatusLabel(gameState.status);
+  const turnLabel =
+    turn !== null
+      ? `Tour ${turn}${activePlayerName ? ` — ${activePlayerName}` : ""}`
+      : "Préparation en cours";
+
   const summaryItems = [
     {
       key: "players",
@@ -2458,16 +2431,13 @@ export default function RoomPage() {
     {
       key: "status",
       label: "État de la partie",
-      value: formatStatusLabel(gameState.status),
+      value: statusLabel,
       icon: <TargetIcon aria-hidden className="size-4" />,
     },
     {
       key: "turn",
       label: "Tour actuel",
-      value:
-        turn !== null
-          ? `Tour ${turn}${activePlayerName ? ` — ${activePlayerName}` : ""}`
-          : "Préparation en cours",
+      value: turnLabel,
       icon: <TimerIcon aria-hidden className="size-4" />,
     },
     {
@@ -2477,6 +2447,10 @@ export default function RoomPage() {
       icon: <EyeIcon aria-hidden className="size-4" />,
     },
   ];
+
+  const canPromoteSpectators =
+    isLocalHost && gameState.status === GameStatus.Lobby && players.length < 2;
+  const canKickPlayers = isLocalHost && gameState.status === GameStatus.Lobby;
 
   const boardSections: ReactNode[] = orderedPlayers.map((player) => {
     const isLocal = localPlayer?.id === player.id;
@@ -2491,12 +2465,14 @@ export default function RoomPage() {
       : null;
     const allowSecretSelection =
       isLocal && gameState.status === GameStatus.Lobby;
-    const allowRandomSecret = allowSecretSelection && grid.cards.length > 0;
     const allowCardToggle =
       isLocal &&
       gameState.status === GameStatus.Playing &&
       activePlayerId === player.id;
     const showSecretCard = isSpectatorView || isLocal;
+    const onRequestSecretSelection = allowSecretSelection
+      ? () => setSecretSelectionPlayerId(player.id)
+      : undefined;
 
     return (
       <section
@@ -2511,10 +2487,8 @@ export default function RoomPage() {
           secretCard={secretCard}
           showSecretCard={showSecretCard}
           allowSecretSelection={allowSecretSelection}
-          allowRandomSecret={allowRandomSecret}
           allowCardToggle={allowCardToggle}
-          onSelectSecret={(cardId) => handleSelectSecret(player.id, cardId)}
-          onRandomSecret={() => handleRandomSecret(player)}
+          onRequestSecretSelection={onRequestSecretSelection}
           onToggleCard={(cardId) => handleToggleCard(player.id, cardId)}
           status={gameState.status}
           isLocal={isLocal}
@@ -2537,118 +2511,160 @@ export default function RoomPage() {
     );
   }
 
+  const secretSelectionPlayer = secretSelectionPlayerId
+    ? (players.find((player) => player.id === secretSelectionPlayerId) ?? null)
+    : null;
+
+  const secretSelectionPlayerName = secretSelectionPlayer?.name ?? "ce joueur";
+  const secretSelectionCurrentCardId =
+    secretSelectionPlayer?.secretCardId ?? null;
+  const secretSelectionCards = grid?.cards ?? [];
+  const isSecretSelectionOpen = Boolean(
+    secretSelectionPlayer && secretSelectionCards.length > 0,
+  );
+
+  const canEndTurnButton = !isLocalHost && isLocalTurn && Boolean(localPlayer);
+  const hostNextTurnDisabled =
+    !isLocalHost ||
+    gameState.status !== GameStatus.Playing ||
+    !canonicalLocalPlayer ||
+    activePlayerId !== canonicalLocalPlayer.id;
+
+  const turnBarHostControls = {
+    onNextTurn: isLocalHost ? handleEndTurn : undefined,
+    nextTurnDisabled: hostNextTurnDisabled,
+    onPause: undefined,
+    pauseDisabled: true,
+    onResetRound: undefined,
+    resetDisabled: true,
+  } as const;
+
   return (
-    <div className="full-height-page grid h-full min-h-0 flex-1 gap-4 sm:gap-6 grid-rows-[2fr_3fr_3fr] lg:grid-cols-2 lg:grid-rows-[2fr_6fr]">
-      <section className="flex min-h-0 flex-col gap-6 overflow-y-auto rounded-2xl border border-border/70 bg-background/80 p-6 shadow-sm lg:col-span-2">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
-              <UsersIcon aria-hidden className="size-4" />
-              Salle KeyS
-            </div>
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-              Salle {roomId}
-            </h1>
-            <p className="text-base text-muted-foreground sm:text-lg">
-              Gérez les plateaux, les joueurs et le déroulement de la partie.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2 sm:justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="flex items-center gap-2"
-              onClick={handleOpenRoleSelection}
-            >
-              <UserCogIcon aria-hidden className="size-4" />
-              Changer de rôle
-            </Button>
-            <ParticipantsDialog
-              players={playerSummaries}
-              spectators={spectators}
-              status={gameState.status}
-              turn={turn}
-              activePlayerName={activePlayerName}
-            />
-            <InviteDialog
-              grid={grid}
-              roomId={normalizedRoomId}
-              host={hostIdentityForInvite}
-              canShare={canShareInvite}
-              allowJoin={shouldShowJoinCard}
-              canJoinAsPlayer={canJoinAsPlayer}
-              onJoin={handleJoinAsGuest}
-              isJoining={isJoiningLobby}
-            />
-            <RoomInformationDialog
-              roomId={roomId}
-              grid={grid}
-              status={gameState.status}
-              hostName={hostPlayerName}
-            />
-          </div>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {summaryItems.map((item) => (
-            <div
-              key={item.key}
-              className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/20 p-3"
-            >
-              <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-                {item.icon}
-              </span>
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase text-muted-foreground">
-                  {item.label}
-                </p>
-                <p className="text-sm font-medium text-foreground">
-                  {item.value}
-                </p>
+    <div className="full-height-page flex h-full min-h-0 flex-1 flex-col gap-4 sm:gap-6">
+      <div className="grid h-full min-h-0 flex-1 gap-4 sm:gap-6 grid-rows-[2fr_3fr_3fr] lg:grid-cols-2 lg:grid-rows-[2fr_6fr]">
+        <section className="flex min-h-0 flex-col gap-6 overflow-y-auto rounded-2xl border border-border/70 bg-background/80 p-6 shadow-sm lg:col-span-2">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+                <UsersIcon aria-hidden className="size-4" />
+                Salle KeyS
               </div>
+              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+                Salle {roomId}
+              </h1>
+              <p className="text-base text-muted-foreground sm:text-lg">
+                Gérez les plateaux, les joueurs et le déroulement de la partie.
+              </p>
             </div>
-          ))}
-        </div>
-        {actionError ? (
-          <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            <AlertCircleIcon aria-hidden className="mt-0.5 size-4" />
-            <span>{actionError}</span>
-          </div>
-        ) : null}
-        {canHostStart ? (
-          <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm text-muted-foreground">
-              {startDisabled
-                ? "Chaque joueur doit choisir une carte secrète avant de commencer."
-                : "Lancez la partie pour démarrer le premier tour."}
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+                onClick={handleOpenRoleSelection}
+              >
+                <UserCogIcon aria-hidden className="size-4" />
+                Changer de rôle
+              </Button>
+              <ParticipantsSheet
+                players={playerSummaries}
+                spectators={spectators}
+                statusLabel={statusLabel}
+                turnLabel={turnLabel}
+                isHost={isLocalHost}
+                canPromoteSpectators={canPromoteSpectators}
+                canKickPlayers={canKickPlayers}
+                onPromoteSpectator={
+                  isLocalHost ? handlePromoteSpectator : undefined
+                }
+                onKickSpectator={isLocalHost ? handleKickSpectator : undefined}
+                onKickPlayer={isLocalHost ? handleKickPlayer : undefined}
+              />
+              <InviteDialog
+                grid={grid}
+                roomId={normalizedRoomId}
+                host={hostIdentityForInvite}
+                canShare={canShareInvite}
+                allowJoin={shouldShowJoinCard}
+                canJoinAsPlayer={canJoinAsPlayer}
+                onJoin={handleJoinAsGuest}
+                isJoining={isJoiningLobby}
+              />
+              <RoomInformationDialog
+                roomId={roomId}
+                grid={grid}
+                status={gameState.status}
+                hostName={hostPlayerName}
+              />
             </div>
-            <Button
-              type="button"
-              onClick={handleStartGame}
-              disabled={startDisabled}
-            >
-              <PlayIcon aria-hidden className="mr-2 size-4" />
-              Démarrer le match
-            </Button>
           </div>
-        ) : null}
-        {isLocalTurn ? (
-          <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-background/80 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm text-muted-foreground">
-              Vous pouvez retourner vos cartes puis passer la main à votre
-              adversaire.
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {summaryItems.map((item) => (
+              <div
+                key={item.key}
+                className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/20 p-3"
+              >
+                <span className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  {item.icon}
+                </span>
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">
+                    {item.label}
+                  </p>
+                  <p className="text-sm font-medium text-foreground">
+                    {item.value}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+          {actionError ? (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <AlertCircleIcon aria-hidden className="mt-0.5 size-4" />
+              <span>{actionError}</span>
             </div>
-            <Button type="button" variant="outline" onClick={handleEndTurn}>
-              <ArrowRightIcon aria-hidden className="mr-2 size-4" />
-              Terminer le tour
-            </Button>
-          </div>
-        ) : null}
-        {gameState.status === GameStatus.Finished ? (
-          <FinalResultCard state={gameState} cardLookup={cardLookup} />
-        ) : null}
-      </section>
-      {boardSections}
+          ) : null}
+          {canHostStart ? (
+            <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-muted-foreground">
+                {startDisabled
+                  ? "Chaque joueur doit choisir une carte secrète avant de commencer."
+                  : "Lancez la partie pour démarrer le premier tour."}
+              </div>
+              <Button
+                type="button"
+                onClick={handleStartGame}
+                disabled={startDisabled}
+              >
+                <PlayIcon aria-hidden className="mr-2 size-4" />
+                Démarrer le match
+              </Button>
+            </div>
+          ) : null}
+          {gameState.status === GameStatus.Finished ? (
+            <FinalResultCard state={gameState} cardLookup={cardLookup} />
+          ) : null}
+        </section>
+        {boardSections}
+      </div>
+      <TurnBar
+        turn={turn}
+        activePlayerName={activePlayerName}
+        status={gameState.status}
+        isHost={isLocalHost}
+        canEndTurn={canEndTurnButton}
+        onEndTurn={canEndTurnButton ? handleEndTurn : undefined}
+        hostControls={turnBarHostControls}
+      />
+      <TargetSelectionModal
+        cards={secretSelectionCards}
+        isOpen={isSecretSelectionOpen}
+        onOpenChange={handleSecretSelectionOpenChange}
+        currentCardId={secretSelectionCurrentCardId}
+        playerName={secretSelectionPlayerName}
+        onConfirm={handleConfirmSecretSelection}
+      />
     </div>
   );
 }
