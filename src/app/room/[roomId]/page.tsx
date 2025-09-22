@@ -80,6 +80,7 @@ import {
   type GameActionMessagePayload,
   validateGameActionMessage,
 } from "@/lib/p2p/protocol";
+import { RemoteActionQueue } from "@/lib/p2p/remote-action-queue";
 import { decodeGridFromToken } from "@/lib/share/url";
 import type { HostPreparationRecord } from "@/lib/storage/session";
 import { loadHostPreparation } from "@/lib/storage/session";
@@ -200,6 +201,10 @@ export default function RoomPage() {
     remotePeerIdentifier,
   );
   const replicatorRef = useRef<ActionReplicator | null>(null);
+  const pendingRemoteActionsRef = useRef<RemoteActionQueue | null>(null);
+  if (!pendingRemoteActionsRef.current) {
+    pendingRemoteActionsRef.current = new RemoteActionQueue();
+  }
   const inviteHostName = useMemo(() => {
     const trimmed = hostNameParam?.trim();
     return trimmed && trimmed.length > 0 ? trimmed : null;
@@ -381,6 +386,31 @@ export default function RoomPage() {
     return () => window.clearTimeout(timeout);
   }, [actionError]);
 
+  const handleRemoteProcessingError = useCallback(
+    (error: unknown) => {
+      const details =
+        error instanceof Error ? error.message : "Message distant invalide.";
+      console.error("Invalid realtime action payload", error);
+      setActionError(`Action distante invalide : ${details}`);
+      if (resolvedPeerRole === PeerRole.Guest) {
+        setIsJoiningLobby(false);
+      }
+    },
+    [resolvedPeerRole],
+  );
+
+  const processRemotePayload = useCallback(
+    (payload: GameActionMessagePayload) => {
+      const replicator = replicatorRef.current;
+      if (!replicator) {
+        pendingRemoteActionsRef.current?.enqueue(payload);
+        return;
+      }
+      replicator.handleRemote(payload);
+    },
+    [],
+  );
+
   useEffect(() => {
     const role = peerCreationConfig?.role ?? null;
     const runtime = peerConnection.runtime;
@@ -439,6 +469,15 @@ export default function RoomPage() {
 
     replicatorRef.current = replicator;
 
+    pendingRemoteActionsRef.current?.drain(
+      (payload) => {
+        replicator.handleRemote(payload);
+      },
+      (error) => {
+        handleRemoteProcessingError(error);
+      },
+    );
+
     return () => {
       if (replicatorRef.current === replicator) {
         replicatorRef.current = null;
@@ -450,6 +489,7 @@ export default function RoomPage() {
     peerCreationConfig,
     roomId,
     localGuestId,
+    handleRemoteProcessingError,
   ]);
 
   useEffect(() => {
@@ -460,21 +500,19 @@ export default function RoomPage() {
     const unsubscribe = runtime.onMessage("game/action", (message) => {
       try {
         const payload = validateGameActionMessage(message.payload);
-        replicatorRef.current?.handleRemote(payload);
+        processRemotePayload(payload);
       } catch (error) {
-        const details =
-          error instanceof Error ? error.message : "Message distant invalide.";
-        console.error("Invalid realtime action payload", error);
-        setActionError(`Action distante invalide : ${details}`);
-        if (resolvedPeerRole === PeerRole.Guest) {
-          setIsJoiningLobby(false);
-        }
+        handleRemoteProcessingError(error);
       }
     });
     return () => {
       unsubscribe();
     };
-  }, [peerConnection.runtime, resolvedPeerRole]);
+  }, [
+    peerConnection.runtime,
+    processRemotePayload,
+    handleRemoteProcessingError,
+  ]);
 
   useEffect(() => {
     if (resolvedPeerRole !== PeerRole.Guest) {
