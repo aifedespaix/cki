@@ -18,6 +18,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  createRandomSeed,
+  generateRandomCards,
+} from "@/lib/game/random-characters";
 import type { Card as GameCard, Grid } from "@/lib/game/types";
 import {
   type ImageAssetDraft,
@@ -298,6 +302,22 @@ export const GridEditor = forwardRef<GridEditorHandle, GridEditorProps>(
       setGridId(createRandomId("grid"));
     };
 
+    const handleGenerateRandomGrid = useCallback(() => {
+      const seed = createRandomSeed();
+      setCards((previousCards) => {
+        if (previousCards.length === 0) {
+          return previousCards;
+        }
+        return generateRandomCards({
+          cards: previousCards,
+          seed,
+        });
+      });
+      // Drop any processed image metadata because random avatars rely on
+      // remote URLs rather than locally optimised assets.
+      setImageMetadata(() => ({}));
+    }, []);
+
     const buildNormalisedGrid = useCallback((): Grid => {
       const total = rows * columns;
       if (cards.length !== total) {
@@ -447,13 +467,23 @@ export const GridEditor = forwardRef<GridEditorHandle, GridEditorProps>(
           </Card>
 
           <Card className="border border-border/70">
-            <CardHeader>
-              <CardTitle>Cartes du plateau</CardTitle>
-              <CardDescription>
-                Définissez le nom et l’illustration de chaque carte. Les images
-                en data URI augmentent la taille du lien : privilégiez les URLs
-                publiques lorsque c’est possible.
-              </CardDescription>
+            <CardHeader className="space-y-3 sm:flex sm:items-start sm:justify-between sm:space-y-0 sm:gap-4">
+              <div className="space-y-1">
+                <CardTitle>Cartes du plateau</CardTitle>
+                <CardDescription>
+                  Définissez le nom et l’illustration de chaque carte. Les
+                  images en data URI augmentent la taille du lien : privilégiez
+                  les URLs publiques lorsque c’est possible.
+                </CardDescription>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full sm:w-auto"
+                onClick={handleGenerateRandomGrid}
+              >
+                Generate Random Grid
+              </Button>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 lg:grid-cols-2">
