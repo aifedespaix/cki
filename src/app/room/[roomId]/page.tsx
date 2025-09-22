@@ -22,6 +22,7 @@ import {
   type FormEvent,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -39,6 +40,7 @@ import {
 } from "@/components/ui/card";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -67,6 +69,23 @@ import {
   PlayerRole,
 } from "@/lib/game/types";
 import {
+  type ActionReplicator,
+  createActionReplicator,
+} from "@/lib/p2p/action-sync";
+import {
+  type ConnectionPhase,
+  createPeer,
+  PeerRole,
+  type PeerRuntime,
+} from "@/lib/p2p/peer";
+import {
+  GAME_PROTOCOL_NAMESPACE,
+  type GameActionMessagePayload,
+  type GameProtocolMessageMap,
+  SUPPORTED_GAME_PROTOCOL_VERSIONS,
+  validateGameActionMessage,
+} from "@/lib/p2p/protocol";
+import {
   buildInviteUrl,
   decodeGridFromToken,
   encodeGridToToken,
@@ -74,23 +93,6 @@ import {
 import type { HostPreparationRecord } from "@/lib/storage/session";
 import { loadHostPreparation } from "@/lib/storage/session";
 import { cn, createRandomId } from "@/lib/utils";
-import {
-  createActionReplicator,
-  type ActionReplicator,
-} from "@/lib/p2p/action-sync";
-import {
-  createPeer,
-  PeerRole,
-  type ConnectionPhase,
-  type PeerRuntime,
-} from "@/lib/p2p/peer";
-import {
-  GAME_PROTOCOL_NAMESPACE,
-  SUPPORTED_GAME_PROTOCOL_VERSIONS,
-  validateGameActionMessage,
-  type GameActionMessagePayload,
-  type GameProtocolMessageMap,
-} from "@/lib/p2p/protocol";
 
 interface Spectator {
   id: string;
@@ -183,16 +185,13 @@ const useRoomPeerRuntime = (
     const offError = runtime.events.on("connection/error", ({ error }) => {
       setState((previous) => ({ ...previous, error, phase: "error" }));
     });
-    const offDisconnected = runtime.events.on(
-      "connection/disconnected",
-      () => {
-        setState((previous) => ({
-          ...previous,
-          remotePeerId: null,
-          phase: "reconnecting",
-        }));
-      },
-    );
+    const offDisconnected = runtime.events.on("connection/disconnected", () => {
+      setState((previous) => ({
+        ...previous,
+        remotePeerId: null,
+        phase: "reconnecting",
+      }));
+    });
     const offPeerClose = runtime.events.on("peer/close", () => {
       setState(createInitialPeerState());
     });
@@ -521,15 +520,22 @@ function InviteDialog({
                   Rejoindre la salle de {hostName}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Choisissez un pseudo pour apparaître auprès de votre
-                  adversaire avant d’entrer dans la salle.
+                  Sélectionnez votre rôle puis choisissez un pseudo si vous
+                  souhaitez affronter l’hôte.
                 </p>
+                {!canJoinAsPlayer ? (
+                  <p className="text-xs text-muted-foreground">
+                    La place de joueur est déjà occupée. Vous pouvez néanmoins
+                    observer la partie en tant que spectateur.
+                  </p>
+                ) : null}
               </div>
               <JoinAsGuestForm
                 hostName={hostName}
                 onJoin={onJoin}
                 disabled={!allowJoin || isJoining}
-                isSubmitting={isJoining}
+                isSubmitting={isSubmitting}
+                canJoinAsPlayer={canJoinAsPlayer}
               />
             </div>
           ) : null}
@@ -539,23 +545,44 @@ function InviteDialog({
   );
 }
 
+type JoinRole = "player" | "spectator";
+
 function JoinAsGuestForm({
   hostName,
   onJoin,
   disabled,
   isSubmitting,
+  canJoinAsPlayer,
 }: {
   hostName: string;
   onJoin: (nickname: string) => void;
   disabled: boolean;
   isSubmitting: boolean;
+  canJoinAsPlayer: boolean;
 }) {
   const [nickname, setNickname] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+  const [selectedRole, setSelectedRole] = useState<JoinRole>(
+    canJoinAsPlayer ? "player" : "spectator",
+  );
+  const roleFieldId = useId();
+  const playerOptionId = `${roleFieldId}-player`;
+  const spectatorOptionId = `${roleFieldId}-spectator`;
+
+  useEffect(() => {
+    if (!canJoinAsPlayer) {
+      setSelectedRole("spectator");
+    }
+  }, [canJoinAsPlayer]);
+
+  const handleRoleChange = useCallback((role: JoinRole) => {
+    setSelectedRole(role);
+    setLocalError(null);
+  }, []);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (disabled) {
+    if (disabled || selectedRole !== "player") {
       return;
     }
     const trimmed = nickname.trim();
@@ -577,55 +604,149 @@ function JoinAsGuestForm({
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <div className="space-y-2">
-        <label
-          htmlFor="guest-nickname"
-          className="text-sm font-medium text-foreground"
-        >
-          Votre pseudo
-        </label>
-        <input
-          id="guest-nickname"
-          type="text"
-          value={nickname}
-          onChange={(event) => {
-            setNickname(event.target.value);
-            if (localError) {
-              setLocalError(null);
-            }
-          }}
-          onBlur={() => {
-            if (!nickname.trim()) {
-              setLocalError(
-                "Un pseudo est nécessaire pour identifier chaque joueur.",
-              );
-            }
-          }}
-          className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder="Invité mystère"
-          maxLength={40}
-          autoComplete="off"
-          disabled={disabled || isSubmitting}
-        />
-      </div>
-      <div className="space-y-2 text-sm text-muted-foreground">
-        <p>
-          Ce pseudo sera partagé via la connexion pair-à-pair afin que votre
-          adversaire sache qui a rejoint la salle.
-        </p>
-        <p>
-          Vous pourrez le modifier ultérieurement depuis votre tableau de bord.
-        </p>
-      </div>
+      <fieldset className="space-y-3">
+        <legend className="text-sm font-medium text-foreground">
+          Choisissez comment participer
+        </legend>
+        <div className="space-y-2">
+          <label
+            htmlFor={playerOptionId}
+            className={cn(
+              "flex items-start gap-3 rounded-md border px-3 py-3 text-sm transition-colors",
+              selectedRole === "player"
+                ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                : "border-border/70 bg-background",
+              canJoinAsPlayer && !disabled
+                ? "cursor-pointer hover:border-primary/50 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20"
+                : "cursor-not-allowed opacity-60",
+            )}
+          >
+            <input
+              id={playerOptionId}
+              type="radio"
+              name={`${roleFieldId}-role`}
+              value="player"
+              checked={selectedRole === "player"}
+              onChange={() => handleRoleChange("player")}
+              disabled={disabled || isSubmitting || !canJoinAsPlayer}
+              className="mt-1 h-4 w-4 border-border/70 text-primary focus:ring-ring"
+            />
+            <div className="flex flex-col gap-1">
+              <span className="font-medium text-foreground">Joueur</span>
+              <span className="text-xs text-muted-foreground">
+                Défiez l’hôte sur ce plateau personnalisé.
+              </span>
+              {!canJoinAsPlayer ? (
+                <span className="text-xs text-destructive">
+                  La place de joueur est déjà occupée.
+                </span>
+              ) : null}
+            </div>
+          </label>
+          <label
+            htmlFor={spectatorOptionId}
+            className={cn(
+              "flex items-start gap-3 rounded-md border px-3 py-3 text-sm transition-colors",
+              selectedRole === "spectator"
+                ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                : "border-border/70 bg-background",
+              "cursor-pointer hover:border-primary/50 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20",
+            )}
+          >
+            <input
+              id={spectatorOptionId}
+              type="radio"
+              name={`${roleFieldId}-role`}
+              value="spectator"
+              checked={selectedRole === "spectator"}
+              onChange={() => handleRoleChange("spectator")}
+              className="mt-1 h-4 w-4 border-border/70 text-primary focus:ring-ring"
+            />
+            <div className="flex flex-col gap-1">
+              <span className="font-medium text-foreground">Spectateur</span>
+              <span className="text-xs text-muted-foreground">
+                Observez la partie en direct sans interagir avec le plateau.
+              </span>
+            </div>
+          </label>
+        </div>
+      </fieldset>
+
+      {selectedRole === "player" ? (
+        <>
+          <div className="space-y-2">
+            <label
+              htmlFor="guest-nickname"
+              className="text-sm font-medium text-foreground"
+            >
+              Votre pseudo
+            </label>
+            <input
+              id="guest-nickname"
+              type="text"
+              value={nickname}
+              onChange={(event) => {
+                setNickname(event.target.value);
+                if (localError) {
+                  setLocalError(null);
+                }
+              }}
+              onBlur={() => {
+                if (!nickname.trim()) {
+                  setLocalError(
+                    "Un pseudo est nécessaire pour identifier chaque joueur.",
+                  );
+                }
+              }}
+              className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              placeholder="Invité mystère"
+              maxLength={40}
+              autoComplete="off"
+              disabled={disabled || isSubmitting}
+            />
+          </div>
+          <div className="space-y-2 text-sm text-muted-foreground">
+            <p>
+              Ce pseudo sera partagé via la connexion pair-à-pair afin que votre
+              adversaire sache qui a rejoint la salle.
+            </p>
+            <p>
+              Vous pourrez le modifier ultérieurement depuis votre tableau de
+              bord.
+            </p>
+          </div>
+        </>
+      ) : (
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <p>Aucun pseudo n’est requis pour observer la partie.</p>
+          <p>
+            Fermez cette fenêtre pour suivre la partie en tant que spectateur.
+          </p>
+        </div>
+      )}
+
       {localError ? (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {localError}
         </div>
       ) : null}
-      <Button type="submit" disabled={disabled || isSubmitting}>
-        <UsersIcon aria-hidden className="mr-2 size-4" />
-        {isSubmitting ? "Connexion…" : `Rejoindre ${hostName}`}
-      </Button>
+
+      {selectedRole === "player" ? (
+        <Button
+          type="submit"
+          disabled={disabled || isSubmitting || !canJoinAsPlayer}
+        >
+          <UsersIcon aria-hidden className="mr-2 size-4" />
+          {isSubmitting ? "Connexion…" : `Rejoindre ${hostName}`}
+        </Button>
+      ) : (
+        <DialogClose asChild>
+          <Button type="button" variant="outline">
+            <EyeIcon aria-hidden className="mr-2 size-4" />
+            Observer la partie
+          </Button>
+        </DialogClose>
+      )}
     </form>
   );
 }
@@ -1494,8 +1615,7 @@ export default function RoomPage() {
   useEffect(() => {
     const role = peerCreationConfig?.role ?? null;
     const runtime = peerConnection.runtime;
-    const peerId =
-      peerConnection.peerId ?? peerCreationConfig?.peerId ?? null;
+    const peerId = peerConnection.peerId ?? peerCreationConfig?.peerId ?? null;
 
     if (!runtime || !role || !peerId) {
       replicatorRef.current = null;
@@ -1561,9 +1681,6 @@ export default function RoomPage() {
     peerCreationConfig,
     roomId,
     localGuestId,
-    setGameState,
-    setActionError,
-    setIsJoiningLobby,
   ]);
 
   useEffect(() => {
@@ -1577,9 +1694,7 @@ export default function RoomPage() {
         replicatorRef.current?.handleRemote(payload);
       } catch (error) {
         const details =
-          error instanceof Error
-            ? error.message
-            : "Message distant invalide.";
+          error instanceof Error ? error.message : "Message distant invalide.";
         console.error("Invalid P2P action payload", error);
         setActionError(`Action distante invalide : ${details}`);
         if (resolvedPeerRole === PeerRole.Guest) {
@@ -1590,7 +1705,7 @@ export default function RoomPage() {
     return () => {
       unsubscribe();
     };
-  }, [peerConnection.runtime, resolvedPeerRole, setActionError, setIsJoiningLobby]);
+  }, [peerConnection.runtime, resolvedPeerRole]);
 
   useEffect(() => {
     if (resolvedPeerRole !== PeerRole.Guest) {
@@ -1603,19 +1718,13 @@ export default function RoomPage() {
           "Erreur de connexion pair-à-pair. Réessayez plus tard.",
       );
     }
-  }, [
-    resolvedPeerRole,
-    peerConnection.phase,
-    peerConnection.error,
-    setActionError,
-    setIsJoiningLobby,
-  ]);
+  }, [resolvedPeerRole, peerConnection.phase, peerConnection.error]);
 
   useEffect(() => {
     if (resolvedPeerRole !== PeerRole.Guest && isJoiningLobby) {
       setIsJoiningLobby(false);
     }
-  }, [resolvedPeerRole, isJoiningLobby, setIsJoiningLobby]);
+  }, [resolvedPeerRole, isJoiningLobby]);
 
   const applyGameAction = useCallback(
     (action: Action) => {
@@ -1668,7 +1777,7 @@ export default function RoomPage() {
         throw error;
       }
     },
-    [resolvedPeerRole, setGameState, setActionError, setIsJoiningLobby],
+    [resolvedPeerRole],
   );
 
   const players = useMemo(() => selectPlayers(gameState), [gameState]);
@@ -1777,6 +1886,8 @@ export default function RoomPage() {
   const hasJoinedAsGuest = Boolean(localGuestName);
   const shouldShowJoinCard =
     isInvitee && !hasJoinedAsGuest && gameState.status === GameStatus.Lobby;
+  const canJoinAsPlayer =
+    gameState.status === GameStatus.Lobby && players.length < 2;
 
   const canHostStart =
     localPlayer?.role === PlayerRole.Host &&
@@ -2020,6 +2131,7 @@ export default function RoomPage() {
               host={hostIdentityForInvite}
               canShare={canShareInvite}
               allowJoin={shouldShowJoinCard}
+              canJoinAsPlayer={canJoinAsPlayer}
               onJoin={handleJoinAsGuest}
               isJoining={isJoiningLobby}
             />
