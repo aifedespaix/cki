@@ -76,6 +76,11 @@
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
   --sidebar-ring: oklch(0.705 0.015 286.067);
+  --mobile-nav-height: 0px;
+  --mobile-nav-offset: max(
+    var(--mobile-nav-height),
+    env(safe-area-inset-bottom)
+  );
 }
 
 .dark {
@@ -180,4 +185,13 @@ body.room-screen-active header,
 body.room-screen-active footer,
 body.room-screen-active [data-mobile-nav="true"] {
   display: none;
+}
+
+@layer utilities {
+  .mobile-nav-offset {
+    padding-bottom: calc(
+      var(--mobile-nav-offset, env(safe-area-inset-bottom)) +
+      var(--mobile-nav-offset-extra, 0px)
+    );
+  }
 }
