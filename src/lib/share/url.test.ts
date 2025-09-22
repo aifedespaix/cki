@@ -9,6 +9,8 @@ import {
   encodeGridToToken,
   extractTokenFromInput,
   InvalidShareTokenError,
+  InviteUrlOriginMismatchError,
+  normalizeInviteInput,
 } from "./url";
 
 const createSampleGrid = (): Grid => ({
@@ -61,5 +63,66 @@ describe("share/url", () => {
     );
     expect(extractTokenFromInput("   ")).toBeNull();
     expect(extractTokenFromInput("/#inline")).toBe("inline");
+  });
+
+  describe("normalizeInviteInput", () => {
+    it("returns canonical data for a same-origin invite URL", () => {
+      const result = normalizeInviteInput(
+        "https://example.com/room/room-123?role=guest#token-123",
+        "https://example.com",
+      );
+
+      expect(result).toEqual({
+        token: "token-123",
+        canonicalValue:
+          "https://example.com/room/room-123?role=guest#token-123",
+        roomPathWithToken: "/room/room-123?role=guest#token-123",
+      });
+    });
+
+    it("normalises relative room paths using the current origin", () => {
+      const result = normalizeInviteInput(
+        "/room/demo#abc",
+        "https://example.com",
+      );
+
+      expect(result).toEqual({
+        token: "abc",
+        canonicalValue: "https://example.com/room/demo#abc",
+        roomPathWithToken: "/room/demo#abc",
+      });
+    });
+
+    it("keeps tokens without URLs untouched", () => {
+      const result = normalizeInviteInput("plain-token", "https://example.com");
+
+      expect(result).toEqual({
+        token: "plain-token",
+        canonicalValue: "plain-token",
+        roomPathWithToken: null,
+      });
+    });
+
+    it("rejects invite URLs targeting a different origin", () => {
+      expect(() =>
+        normalizeInviteInput(
+          "https://malicious.com/room/room-1#abc",
+          "https://example.com",
+        ),
+      ).toThrow(InviteUrlOriginMismatchError);
+    });
+
+    it("does not expose a room path when the URL does not target a room", () => {
+      const result = normalizeInviteInput(
+        "https://example.com/join#token-value",
+        "https://example.com",
+      );
+
+      expect(result).toEqual({
+        token: "token-value",
+        canonicalValue: "https://example.com/join#token-value",
+        roomPathWithToken: null,
+      });
+    });
   });
 });
