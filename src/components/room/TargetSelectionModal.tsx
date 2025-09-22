@@ -46,6 +46,17 @@ type CardArtworkProps = {
 type SelectedCardPreviewProps = {
   readonly card: GameCard | null;
   readonly playerName: string;
+  readonly className?: string;
+};
+
+type CardSelectionSectionProps = {
+  readonly cards: readonly GameCard[];
+  readonly selectedCardId: string | null;
+  readonly onSelectCard: (cardId: string) => void;
+  readonly onRequestRandomCard: () => void;
+  readonly hasCards: boolean;
+  readonly selectedCard: GameCard | null;
+  readonly className?: string;
 };
 
 /**
@@ -96,9 +107,18 @@ function CardArtwork({
  * Summarises the currently selected card so that players keep the context even
  * when the card grid is scrolled away.
  */
-function SelectedCardPreview({ card, playerName }: SelectedCardPreviewProps) {
+function SelectedCardPreview({
+  card,
+  playerName,
+  className,
+}: SelectedCardPreviewProps) {
   return (
-    <section className="flex flex-col gap-3 rounded-xl border bg-background p-4 shadow-sm">
+    <section
+      className={cn(
+        "flex flex-col gap-4 rounded-xl border bg-background p-5 shadow-sm",
+        className,
+      )}
+    >
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">
           Aperçu pour {playerName}
@@ -113,18 +133,16 @@ function SelectedCardPreview({ card, playerName }: SelectedCardPreviewProps) {
       {card ? (
         <>
           <CardArtwork card={card}>
-            <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/90 px-2 py-1 text-[0.65rem] font-semibold uppercase text-foreground shadow">
+            <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-background/90 px-2.5 py-1 text-[0.65rem] font-semibold uppercase text-foreground shadow">
               Aperçu
             </span>
           </CardArtwork>
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-foreground">{card.label}</p>
+          <div className="space-y-1 text-sm">
+            <p className="font-semibold text-foreground">{card.label}</p>
             {card.description ? (
-              <p className="text-sm text-muted-foreground">
-                {card.description}
-              </p>
+              <p className="text-muted-foreground">{card.description}</p>
             ) : (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground">
                 Cette carte ne possède pas de description supplémentaire.
               </p>
             )}
@@ -134,6 +152,93 @@ function SelectedCardPreview({ card, playerName }: SelectedCardPreviewProps) {
         <p className="text-sm text-muted-foreground">
           Sélectionnez une carte dans la liste pour visualiser les détails ici.
         </p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Provides the list of selectable cards together with contextual instructions
+ * and quick actions, while constraining the overall height to keep the modal
+ * fully scrollable.
+ */
+function CardSelectionSection({
+  cards,
+  selectedCardId,
+  onSelectCard,
+  onRequestRandomCard,
+  hasCards,
+  selectedCard,
+  className,
+}: CardSelectionSectionProps) {
+  const cardCount = cards.length;
+
+  return (
+    <section
+      className={cn(
+        "flex flex-col overflow-hidden rounded-xl border bg-background shadow-sm",
+        className,
+      )}
+    >
+      <header className="space-y-3 border-b px-5 py-4 sm:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <h3 className="text-base font-semibold text-foreground">
+              Parcourir les cartes
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {selectedCard
+                ? `${selectedCard.label} est prête à être confirmée.`
+                : hasCards
+                  ? "Choisissez une carte ou utilisez la sélection aléatoire."
+                  : "Ajoutez des cartes à la grille pour effectuer une sélection."}
+            </p>
+          </div>
+          <Badge
+            className="self-start text-[0.65rem] font-semibold uppercase tracking-wide"
+            variant="outline"
+          >
+            {cardCount === 1
+              ? "1 carte disponible"
+              : `${cardCount} cartes disponibles`}
+          </Badge>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onRequestRandomCard}
+            disabled={!hasCards}
+          >
+            <ShuffleIcon aria-hidden className="mr-2 size-4" />
+            Sélection aléatoire
+          </Button>
+        </div>
+      </header>
+      {hasCards ? (
+        <ScrollArea
+          className="max-h-[45vh] sm:max-h-[52vh] lg:max-h-[60vh]"
+          aria-label="Cartes disponibles"
+        >
+          <div className="px-5 pb-5 sm:px-6">
+            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {cards.map((card) => (
+                <li key={card.id} className="list-none">
+                  <SelectableCard
+                    card={card}
+                    isSelected={selectedCardId === card.id}
+                    onSelect={() => onSelectCard(card.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        </ScrollArea>
+      ) : (
+        <div className="flex flex-1 items-center justify-center px-6 py-16 text-center text-sm text-muted-foreground">
+          Aucune carte n’est disponible pour le moment.
+        </div>
       )}
     </section>
   );
@@ -218,8 +323,7 @@ function TargetSelectionModal({
     currentCardId,
   );
   const [localError, setLocalError] = useState<string | null>(null);
-  const cardCount = cards.length;
-  const hasCards = cardCount > 0;
+  const hasCards = cards.length > 0;
 
   useEffect(() => {
     if (!isOpen) {
@@ -264,7 +368,7 @@ function TargetSelectionModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+      <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-0 sm:max-w-5xl">
         <DialogHeader className="space-y-2 border-b px-6 py-5">
           <DialogTitle className="flex items-center gap-2 text-lg">
             <TargetIcon aria-hidden className="size-5 text-primary" />
@@ -276,68 +380,30 @@ function TargetSelectionModal({
             verrouiller la carte secrète.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-1 flex-col gap-6 overflow-hidden px-6 py-6">
-          <div className="grid gap-4 md:grid-cols-2 md:items-start">
-            <section className="flex flex-col gap-4 rounded-xl border bg-background p-4 shadow-sm">
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <p className="font-medium text-foreground">
-                  {selectedCard
-                    ? `${selectedCard.label} est prête à être confirmée.`
-                    : "Aucune carte sélectionnée pour le moment."}
-                </p>
-                <p>
-                  {hasCards
-                    ? "Choisissez une carte ou laissez le système décider pour vous."
-                    : "Ajoutez des cartes à la grille pour pouvoir effectuer une sélection."}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="text-[0.65rem] uppercase">
-                  {cardCount === 1
-                    ? "1 carte disponible"
-                    : `${cardCount} cartes disponibles`}
-                </Badge>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full sm:w-auto"
-                  onClick={handleRandomSelection}
-                  disabled={!hasCards}
-                >
-                  <ShuffleIcon aria-hidden className="mr-2 size-4" />
-                  Sélection aléatoire
-                </Button>
-              </div>
-            </section>
-            <SelectedCardPreview card={selectedCard} playerName={playerName} />
+        <div className="flex flex-1 flex-col gap-6 overflow-hidden px-6 pb-6 pt-4 sm:pt-6">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,320px)_1fr] lg:items-start">
+            <CardSelectionSection
+              cards={cards}
+              selectedCardId={selectedCardId}
+              onSelectCard={handleSelectCard}
+              onRequestRandomCard={handleRandomSelection}
+              hasCards={hasCards}
+              selectedCard={selectedCard}
+              className="order-1 lg:order-2"
+            />
+            <SelectedCardPreview
+              card={selectedCard}
+              playerName={playerName}
+              className="order-2 lg:order-1"
+            />
           </div>
-          <ScrollArea className="flex-1 overflow-hidden">
-            <div className="pe-4 pb-6">
-              {hasCards ? (
-                <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {cards.map((card) => (
-                    <li key={card.id} className="list-none">
-                      <SelectableCard
-                        card={card}
-                        isSelected={selectedCardId === card.id}
-                        onSelect={() => handleSelectCard(card.id)}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="flex h-40 items-center justify-center rounded-lg border border-dashed text-center text-sm text-muted-foreground">
-                  Aucune carte n’est disponible pour le moment.
-                </div>
-              )}
-            </div>
-          </ScrollArea>
         </div>
         <DialogFooter className="flex flex-col gap-4 border-t bg-background/95 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             {localError ? (
-              <p className="text-sm text-destructive">{localError}</p>
+              <p className="text-sm text-destructive" role="alert">
+                {localError}
+              </p>
             ) : (
               <Badge variant="outline" className="text-xs uppercase">
                 {selectedCard ? "Prêt à confirmer" : "Sélection requise"}
