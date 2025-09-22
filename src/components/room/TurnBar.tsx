@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertCircleIcon,
   FastForwardIcon,
   PauseIcon,
   RotateCcwIcon,
@@ -20,6 +21,12 @@ type HostControlConfig = {
   readonly resetDisabled: boolean;
 };
 
+type GuessFailureSummary = {
+  readonly guesserName: string;
+  readonly targetName: string;
+  readonly cardLabel: string;
+};
+
 type TurnBarProps = {
   readonly turn: number | null;
   readonly activePlayerName: string | null;
@@ -28,6 +35,7 @@ type TurnBarProps = {
   readonly canEndTurn: boolean;
   readonly onEndTurn?: () => void;
   readonly hostControls: HostControlConfig;
+  readonly lastGuessFailure?: GuessFailureSummary | null;
   readonly className?: string;
 };
 
@@ -66,6 +74,7 @@ function TurnBar({
   canEndTurn,
   onEndTurn,
   hostControls,
+  lastGuessFailure = null,
   className,
 }: TurnBarProps) {
   const {
@@ -79,6 +88,9 @@ function TurnBar({
 
   const turnSummary = formatTurnSummary(turn, activePlayerName, status);
   const statusLabel = statusLabels[status];
+  const failureDescription = lastGuessFailure
+    ? `${lastGuessFailure.guesserName} a annoncé ${lastGuessFailure.cardLabel}, mais ${lastGuessFailure.targetName} protégeait une autre carte.`
+    : null;
 
   return (
     <div
@@ -134,6 +146,20 @@ function TurnBar({
             ) : null}
           </div>
         </div>
+        {failureDescription ? (
+          <div className="mt-3 flex items-start gap-3 rounded-xl border border-destructive/50 bg-destructive/10 px-3 py-2">
+            <AlertCircleIcon
+              aria-hidden
+              className="mt-0.5 size-4 text-destructive"
+            />
+            <div className="space-y-0.5 text-destructive">
+              <p className="text-sm font-semibold">Proposition incorrecte</p>
+              <p className="text-xs leading-relaxed text-destructive/90">
+                {failureDescription}
+              </p>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

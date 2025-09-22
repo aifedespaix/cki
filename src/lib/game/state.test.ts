@@ -183,6 +183,7 @@ describe("reduceGameState", () => {
     expect(playing.status).toBe(GameStatus.Playing);
     expect(playing.activePlayerId).toBe(hostId);
     expect(playing.turn).toBe(1);
+    expect(playing.lastGuessResult).toBeNull();
     expect(selectActivePlayer(playing)?.id).toBe(hostId);
   });
 
@@ -271,19 +272,30 @@ describe("reduceGameState", () => {
     expect(selectWinner(finished)?.id).toBe(hostId);
   });
 
-  it("declares the opponent as winner on an incorrect guess", () => {
+  it("resets the active player board and continues after an incorrect guess", () => {
     const playing = createPlayingState();
-    const finished = reduceGameState(playing, {
+    const withFlip = reduceGameState(playing, {
+      type: "turn/flipCard",
+      payload: { playerId: hostId, cardId: "card-b" },
+    });
+    const afterGuess = reduceGameState(withFlip, {
       type: "turn/guess",
       payload: { playerId: hostId, targetPlayerId: guestId, cardId: "card-b" },
     });
 
-    expect(finished.status).toBe(GameStatus.Finished);
-    expect(finished.winnerId).toBe(guestId);
-    expect(finished.reason).toBe(GameConclusionReason.IncorrectGuess);
-    expect(finished.finalGuess).toMatchObject({
-      correct: false,
+    expect(afterGuess.status).toBe(GameStatus.Playing);
+    const updatedPlaying = asPlayingState(afterGuess);
+    expect(updatedPlaying.activePlayerId).toBe(guestId);
+    expect(updatedPlaying.turn).toBe(2);
+    expect(
+      updatedPlaying.players.find((player) => player.id === hostId)
+        ?.flippedCardIds,
+    ).toEqual([]);
+    expect(updatedPlaying.lastGuessResult).toMatchObject({
+      guesserId: hostId,
+      targetPlayerId: guestId,
       cardId: "card-b",
+      correct: false,
     });
   });
 
