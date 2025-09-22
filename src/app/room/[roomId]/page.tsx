@@ -129,6 +129,9 @@ interface GuessConfirmationRequest {
   lastMaskedCardId: string;
 }
 
+const SECRET_SELECTION_REQUIREMENT_MESSAGE =
+  "Chaque joueur doit choisir une carte secrète avant de commencer.";
+
 export default function RoomPage() {
   const params = useParams<{ roomId: string }>();
   const rawRoomId = params?.roomId;
@@ -1163,14 +1166,21 @@ export default function RoomPage() {
   );
 
   const handleStartGame = useCallback(() => {
-    if (!localPlayer) {
+    if (!canHostStart) {
+      return;
+    }
+    if (!localPlayerId) {
+      return;
+    }
+    if (startDisabled) {
+      setActionError(SECRET_SELECTION_REQUIREMENT_MESSAGE);
       return;
     }
     applyGameAction({
       type: "game/start",
-      payload: { startingPlayerId: localPlayer.id },
+      payload: { startingPlayerId: localPlayerId },
     });
-  }, [applyGameAction, localPlayer]);
+  }, [applyGameAction, canHostStart, localPlayerId, startDisabled]);
 
   const handleEndTurn = useCallback(() => {
     if (!localPlayer) {
@@ -1632,7 +1642,7 @@ export default function RoomPage() {
                 <div className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/30 p-4">
                   <p className="text-sm text-muted-foreground">
                     {startDisabled
-                      ? "Chaque joueur doit choisir une carte secrète avant de commencer."
+                      ? SECRET_SELECTION_REQUIREMENT_MESSAGE
                       : "Lancez la partie pour démarrer le premier tour."}
                   </p>
                   <Button
