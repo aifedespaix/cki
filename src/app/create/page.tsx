@@ -114,7 +114,7 @@ export default function CreatePage() {
               Configuration de la grille
             </div>
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-              Créez votre plateau KeyS personnalisé
+              Créez votre plateau personnalisé pour « C ki ? »
             </h1>
             <p className="text-base text-muted-foreground sm:text-lg">
               Personnalisez vos cartes depuis l’aperçu interactif puis partagez

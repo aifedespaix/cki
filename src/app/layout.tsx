@@ -43,9 +43,9 @@ if (typeof window !== 'undefined') {
 `;
 
 export const metadata: Metadata = {
-  title: "KeyS Companion",
+  title: "C ki ? Companion",
   description:
-    "Interface de commande pour créer, rejoindre et orchestrer vos parties KeyS en toute simplicité.",
+    "Interface de commande pour créer, rejoindre et orchestrer vos parties « C ki ? » en toute simplicité.",
 };
 
 export default function RootLayout({
@@ -86,8 +86,8 @@ export default function RootLayout({
               <footer className="border-t border-border/70 bg-background/95">
                 <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between md:px-6">
                   <p>
-                    © {new Date().getFullYear()} KeyS. Jeu de déduction sécurisé
-                    et accessible.
+                    © {new Date().getFullYear()} C ki ? – Jeu de déduction
+                    sécurisé et accessible.
                   </p>
                   <div className="flex flex-wrap items-center gap-4">
                     <a
