@@ -22,6 +22,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import type { Player, PlayerRole } from "@/lib/game/types";
+import type { SpectatorProfile } from "@/lib/room/spectators";
 import { cn } from "@/lib/utils";
 
 type PlayerSummary = {
@@ -31,10 +32,7 @@ type PlayerSummary = {
   readonly isActive: boolean;
 };
 
-type SpectatorSummary = {
-  readonly id: string;
-  readonly name: string;
-};
+type SpectatorSummary = SpectatorProfile;
 
 type ParticipantsSheetProps = {
   readonly players: readonly PlayerSummary[];

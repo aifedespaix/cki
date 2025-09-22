@@ -89,10 +89,21 @@ import {
 import { PeerRole } from "@/lib/p2p/peer";
 import {
   GAME_PROTOCOL_NAMESPACE,
+  GAME_PROTOCOL_VERSION,
   type GameActionMessagePayload,
+  type SpectatorUpdateMessagePayload,
   validateGameActionMessage,
+  validateSpectatorRosterMessage,
+  validateSpectatorUpdateMessage,
 } from "@/lib/p2p/protocol";
 import { RemoteActionQueue } from "@/lib/p2p/remote-action-queue";
+import {
+  addOrUpdateSpectator,
+  normaliseSpectatorName,
+  normaliseSpectatorRoster,
+  removeSpectatorById,
+  type SpectatorProfile,
+} from "@/lib/room/spectators";
 import { decodeGridFromToken } from "@/lib/share/url";
 import {
   loadPartySession,
@@ -113,11 +124,6 @@ import {
   type RoomPeerCreationConfig,
   useRoomPeerRuntime,
 } from "./hooks/useRoomPeerRuntime";
-
-interface Spectator {
-  id: string;
-  name: string;
-}
 
 type PlayerSummary = {
   player: Player;
@@ -164,7 +170,7 @@ export default function RoomPage() {
     createInitialState(),
   );
   const [actionError, setActionError] = useState<string | null>(null);
-  const [spectators, setSpectators] = useState<readonly Spectator[]>([]);
+  const [spectators, setSpectators] = useState<readonly SpectatorProfile[]>([]);
   const [secretSelectionPlayerId, setSecretSelectionPlayerId] = useState<
     string | null
   >(null);
@@ -250,6 +256,15 @@ export default function RoomPage() {
   const hasLoadedGuestSessionRef = useRef(false);
   const lastPersistedPartyStateRef = useRef<string | null>(null);
   const lastPersistedGuestSessionRef = useRef<string | null>(null);
+  const spectatorPresencePendingRef =
+    useRef<SpectatorUpdateMessagePayload | null>(null);
+  const lastSentSpectatorPresenceRef = useRef<{
+    spectatorId: string;
+    name: string;
+    present: boolean;
+  } | null>(null);
+  const activeSpectatorIdentityRef = useRef<SpectatorProfile | null>(null);
+  const previousViewAsSpectatorRef = useRef(viewAsSpectator);
   if (!pendingRemoteActionsRef.current) {
     pendingRemoteActionsRef.current = new RemoteActionQueue();
   }
@@ -756,21 +771,65 @@ export default function RoomPage() {
     if (!runtime) {
       return;
     }
-    const unsubscribe = runtime.onMessage("game/action", (message) => {
-      try {
-        const payload = validateGameActionMessage(message.payload);
-        processRemotePayload(payload);
-      } catch (error) {
-        handleRemoteProcessingError(error);
-      }
-    });
+    const unsubscribeGameAction = runtime.onMessage(
+      "game/action",
+      (message) => {
+        try {
+          const payload = validateGameActionMessage(message.payload);
+          processRemotePayload(payload);
+        } catch (error) {
+          handleRemoteProcessingError(error);
+        }
+      },
+    );
+    const unsubscribeSpectatorUpdate = runtime.onMessage(
+      "spectator/update",
+      (message) => {
+        if (
+          resolvedPeerRole !== PeerRole.Host ||
+          runtime.protocolVersion !== GAME_PROTOCOL_VERSION
+        ) {
+          return;
+        }
+        try {
+          const payload = validateSpectatorUpdateMessage(message.payload);
+          setSpectators((current) =>
+            payload.present
+              ? addOrUpdateSpectator(current, payload.spectator)
+              : removeSpectatorById(current, payload.spectator.id),
+          );
+        } catch (error) {
+          console.error("Payload spectateur distant invalide.", error);
+        }
+      },
+    );
+    const unsubscribeSpectatorRoster = runtime.onMessage(
+      "spectator/roster",
+      (message) => {
+        if (
+          resolvedPeerRole !== PeerRole.Guest ||
+          runtime.protocolVersion !== GAME_PROTOCOL_VERSION
+        ) {
+          return;
+        }
+        try {
+          const payload = validateSpectatorRosterMessage(message.payload);
+          setSpectators(normaliseSpectatorRoster(payload.spectators));
+        } catch (error) {
+          console.error("Liste de spectateurs invalide.", error);
+        }
+      },
+    );
     return () => {
-      unsubscribe();
+      unsubscribeGameAction();
+      unsubscribeSpectatorUpdate();
+      unsubscribeSpectatorRoster();
     };
   }, [
     peerConnection.runtime,
     processRemotePayload,
     handleRemoteProcessingError,
+    resolvedPeerRole,
   ]);
 
   useEffect(() => {
@@ -887,6 +946,42 @@ export default function RoomPage() {
   const canonicalLocalPlayerName = canonicalLocalPlayer?.name ?? null;
   const canonicalLocalPlayerRole = canonicalLocalPlayer?.role ?? null;
   const isLocalHost = canonicalLocalPlayerRole === PlayerRole.Host;
+  const trimmedRoleSelectionNickname = useMemo(
+    () => roleSelectionNickname.trim(),
+    [roleSelectionNickname],
+  );
+  const localSpectatorId = useMemo(() => {
+    if (canonicalLocalPlayerId) {
+      return canonicalLocalPlayerId;
+    }
+    if (hostPreparation) {
+      return hostPreparation.hostId;
+    }
+    return localGuestId;
+  }, [canonicalLocalPlayerId, hostPreparation, localGuestId]);
+  const localSpectatorProfile = useMemo<SpectatorProfile | null>(() => {
+    if (!localSpectatorId) {
+      return null;
+    }
+    const candidateName =
+      canonicalLocalPlayerName ??
+      localGuestName ??
+      (hostPreparation ? hostPreparation.nickname : null) ??
+      (trimmedRoleSelectionNickname.length > 0
+        ? trimmedRoleSelectionNickname
+        : null) ??
+      "";
+    return {
+      id: localSpectatorId,
+      name: normaliseSpectatorName(candidateName, localSpectatorId),
+    } satisfies SpectatorProfile;
+  }, [
+    localSpectatorId,
+    canonicalLocalPlayerName,
+    localGuestName,
+    hostPreparation,
+    trimmedRoleSelectionNickname,
+  ]);
   useEffect(() => {
     if (!isRoleSelectionOpen) {
       return;
@@ -899,6 +994,188 @@ export default function RoomPage() {
       setRoleSelectionNickname(localGuestName);
     }
   }, [isRoleSelectionOpen, canonicalLocalPlayerName, localGuestName]);
+  useEffect(() => {
+    activeSpectatorIdentityRef.current =
+      viewAsSpectator && localSpectatorProfile ? localSpectatorProfile : null;
+  }, [viewAsSpectator, localSpectatorProfile]);
+  const emitSpectatorPresence = useCallback(
+    (profile: SpectatorProfile, present: boolean) => {
+      if (resolvedPeerRole !== PeerRole.Guest) {
+        return;
+      }
+      const runtime = peerConnection.runtime;
+      const protocolVersion = runtime?.protocolVersion;
+      const payload: SpectatorUpdateMessagePayload = {
+        spectator: profile,
+        present,
+        issuedAt: Date.now(),
+      };
+      const lastSent = lastSentSpectatorPresenceRef.current;
+      if (
+        lastSent &&
+        lastSent.spectatorId === profile.id &&
+        lastSent.present === present &&
+        lastSent.name === profile.name
+      ) {
+        return;
+      }
+      if (!runtime || protocolVersion !== GAME_PROTOCOL_VERSION) {
+        spectatorPresencePendingRef.current = payload;
+      } else {
+        try {
+          runtime.send("spectator/update", payload);
+          spectatorPresencePendingRef.current = null;
+        } catch (error) {
+          console.error(
+            "Impossible d’envoyer la mise à jour de présence spectateur.",
+            error,
+          );
+          spectatorPresencePendingRef.current = payload;
+        }
+      }
+      lastSentSpectatorPresenceRef.current = {
+        spectatorId: profile.id,
+        name: profile.name,
+        present,
+      };
+    },
+    [peerConnection.runtime, resolvedPeerRole],
+  );
+  useEffect(() => {
+    if (resolvedPeerRole !== PeerRole.Guest) {
+      spectatorPresencePendingRef.current = null;
+      lastSentSpectatorPresenceRef.current = null;
+      return;
+    }
+    const runtime = peerConnection.runtime;
+    if (!runtime || runtime.protocolVersion !== GAME_PROTOCOL_VERSION) {
+      return;
+    }
+    const pending = spectatorPresencePendingRef.current;
+    if (!pending) {
+      return;
+    }
+    try {
+      runtime.send("spectator/update", pending);
+      lastSentSpectatorPresenceRef.current = {
+        spectatorId: pending.spectator.id,
+        name: pending.spectator.name,
+        present: pending.present,
+      };
+      spectatorPresencePendingRef.current = null;
+    } catch (error) {
+      console.error(
+        "Impossible d’envoyer la mise à jour de présence spectateur.",
+        error,
+      );
+    }
+  }, [peerConnection.runtime, resolvedPeerRole]);
+  useEffect(() => {
+    const identity = localSpectatorProfile;
+    if (!identity) {
+      return;
+    }
+    const previouslyViewing = previousViewAsSpectatorRef.current;
+    previousViewAsSpectatorRef.current = viewAsSpectator;
+
+    if (viewAsSpectator) {
+      setSpectators((current) => addOrUpdateSpectator(current, identity));
+      if (resolvedPeerRole === PeerRole.Guest) {
+        emitSpectatorPresence(identity, true);
+      }
+      return;
+    }
+
+    if (previouslyViewing) {
+      setSpectators((current) => removeSpectatorById(current, identity.id));
+      if (resolvedPeerRole === PeerRole.Guest) {
+        emitSpectatorPresence(identity, false);
+      }
+      return;
+    }
+
+    if (resolvedPeerRole === PeerRole.Guest) {
+      emitSpectatorPresence(identity, false);
+    }
+  }, [
+    emitSpectatorPresence,
+    localSpectatorProfile,
+    resolvedPeerRole,
+    viewAsSpectator,
+  ]);
+  useEffect(() => {
+    if (resolvedPeerRole !== PeerRole.Host) {
+      return;
+    }
+    const runtime = peerConnection.runtime;
+    if (!runtime || runtime.protocolVersion !== GAME_PROTOCOL_VERSION) {
+      return;
+    }
+    try {
+      runtime.send("spectator/roster", {
+        spectators,
+        issuedAt: Date.now(),
+      });
+    } catch (error) {
+      console.error("Impossible de diffuser la liste des spectateurs.", error);
+    }
+  }, [peerConnection.runtime, resolvedPeerRole, spectators]);
+  useEffect(() => {
+    return () => {
+      if (resolvedPeerRole !== PeerRole.Guest) {
+        return;
+      }
+      const runtime = peerConnection.runtime;
+      if (!runtime || runtime.protocolVersion !== GAME_PROTOCOL_VERSION) {
+        return;
+      }
+      const identity = activeSpectatorIdentityRef.current;
+      if (!identity) {
+        return;
+      }
+      try {
+        runtime.send("spectator/update", {
+          spectator: identity,
+          present: false,
+          issuedAt: Date.now(),
+        });
+      } catch (error) {
+        console.warn("Impossible de notifier le départ du spectateur.", error);
+      }
+    };
+  }, [peerConnection.runtime, resolvedPeerRole]);
+  useEffect(() => {
+    if (resolvedPeerRole !== PeerRole.Host) {
+      return;
+    }
+    if (peerConnection.phase === "connected") {
+      return;
+    }
+    setSpectators((current) => {
+      if (viewAsSpectator && localSpectatorProfile) {
+        const next = addOrUpdateSpectator([], localSpectatorProfile);
+        if (
+          current.length === next.length &&
+          current.every(
+            (entry, index) =>
+              entry.id === next[index]?.id && entry.name === next[index]?.name,
+          )
+        ) {
+          return current;
+        }
+        return next;
+      }
+      if (!viewAsSpectator) {
+        return current.length > 0 ? [] : current;
+      }
+      return current;
+    });
+  }, [
+    resolvedPeerRole,
+    peerConnection.phase,
+    viewAsSpectator,
+    localSpectatorProfile,
+  ]);
   const effectiveLocalPlayerId = viewAsSpectator
     ? null
     : canonicalLocalPlayerId;
@@ -1349,9 +1626,7 @@ export default function RoomPage() {
             player: { id: spectator.id, name: spectator.name },
           },
         });
-        setSpectators((current) =>
-          current.filter((entry) => entry.id !== spectatorId),
-        );
+        setSpectators((current) => removeSpectatorById(current, spectatorId));
       } catch (error) {
         setActionError(
           error instanceof Error
@@ -1437,9 +1712,7 @@ export default function RoomPage() {
       if (!isLocalHost) {
         return;
       }
-      setSpectators((current) =>
-        current.filter((spectator) => spectator.id !== spectatorId),
-      );
+      setSpectators((current) => removeSpectatorById(current, spectatorId));
     },
     [isLocalHost],
   );
