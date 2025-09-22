@@ -114,8 +114,9 @@ export default function CreatePage() {
           Créez votre plateau KeyS personnalisé
         </h1>
         <p className="text-base text-muted-foreground sm:text-lg">
-          Définissez vos cartes, importez des visuels et préparez la partie. Le
-          lien d’invitation ne sera disponible qu’une fois la salle créée.
+          Personnalisez vos cartes depuis l’aperçu interactif puis partagez
+          votre salle en un instant. Le lien d’invitation s’affichera une fois
+          la préparation terminée.
         </p>
         <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
@@ -163,8 +164,8 @@ export default function CreatePage() {
         </div>
 
         <p className="text-sm text-muted-foreground">
-          Ce pseudo sera partagé avec les joueurs et spectateurs via le canal
-          pair-à-pair. Vous pourrez inviter vos amis après avoir lancé la salle.
+          Ce pseudo sera visible par les joueurs et les spectateurs pendant la
+          partie. Vous pourrez inviter vos amis après avoir lancé la salle.
         </p>
       </section>
 

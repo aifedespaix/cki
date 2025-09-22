@@ -11,13 +11,13 @@ import {
   selectWinner,
 } from "./state";
 import {
+  type Action,
   GameConclusionReason,
   type GameState,
   GameStatus,
   type Grid,
   PlayerRole,
   type PlayingState,
-  type Action,
 } from "./types";
 
 const createGrid = (): Grid => ({
@@ -115,7 +115,9 @@ describe("reduceGameState", () => {
     });
     const joinAction = {
       type: "game/joinLobby" as const,
-      payload: { player: { id: guestId, name: "Guest", role: PlayerRole.Guest } },
+      payload: {
+        player: { id: guestId, name: "Guest", role: PlayerRole.Guest },
+      },
     } satisfies Extract<Action, { type: "game/joinLobby" }>;
 
     const withGuest = reduceGameState(lobby, joinAction);

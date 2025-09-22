@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 
-import { createActionReplicator } from "./action-sync";
-import { PeerRole } from "./peer";
 import { createInitialState, reduceGameState } from "../game/state";
 import type { Action, GameState, Grid } from "../game/types";
 import { GameStatus, PlayerRole } from "../game/types";
+import { createActionReplicator } from "./action-sync";
+import { PeerRole } from "./peer";
 import type { GameActionMessagePayload } from "./protocol";
 
 const hostId = "host-player";

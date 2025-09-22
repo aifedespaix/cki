@@ -44,7 +44,7 @@ if (typeof window !== 'undefined') {
 export const metadata: Metadata = {
   title: "KeyS Companion",
   description:
-    "Interface de commande pour créer, rejoindre et orchestrer vos parties KeyS en P2P.",
+    "Interface de commande pour créer, rejoindre et orchestrer vos parties KeyS en toute simplicité.",
 };
 
 export default function RootLayout({

@@ -22,9 +22,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const featureCards = [
   {
-    title: "Expérience temps réel",
+    title: "Partage instantané",
     description:
-      "Synchronisation P2P instantanée avec PeerJS, même en mobilité. Les reconnects se font automatiquement.",
+      "Envoyez un simple lien d’invitation à vos proches, sans jargon technique ni étapes complexes.",
     icon: SparklesIcon,
   },
   {
@@ -77,7 +77,10 @@ export default function Home() {
               aria-hidden="true"
               className="size-5 text-primary"
             />
-            <span>100% P2P : aucune donnée n’est stockée côté serveur.</span>
+            <span>
+              Aucune inscription requise : vos données restent sur vos
+              appareils.
+            </span>
           </div>
         </div>
         <Card className="border border-border/70 shadow-lg shadow-primary/10">

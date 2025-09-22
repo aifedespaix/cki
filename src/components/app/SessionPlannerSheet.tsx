@@ -105,7 +105,8 @@ function SessionPlannerSheet({ children }: SessionPlannerSheetProps) {
                   anomalies.
                 </li>
                 <li className="list-disc">
-                  Exportez les logs P2P localement pour vos audits internes.
+                  Exportez les journaux de session localement pour vos audits
+                  internes.
                 </li>
               </ul>
               <Separator className="my-3" />

@@ -98,3 +98,16 @@ export const generateRandomCards = ({
     } satisfies Card;
   });
 };
+
+/**
+ * Generates a standalone random first name that can be used when the host needs
+ * inspiration for a card label. The generator reuses the deterministic helpers
+ * so the randomness remains evenly distributed across calls.
+ */
+export const generateRandomFirstName = (): string => {
+  const seed = createRandomSeed();
+  const random = createDeterministicRng(seed);
+  const gender = pickAvatarGender(random);
+  const fakerInstance = createSeededFaker(seed);
+  return fakerInstance.person.firstName(gender);
+};

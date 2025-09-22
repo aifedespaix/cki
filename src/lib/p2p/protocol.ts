@@ -39,14 +39,13 @@ export interface GameProtocolMessageMap {
 
 export type GameProtocolMessageType = keyof GameProtocolMessageMap;
 
-export type GameProtocolMessage<
-  Type extends GameProtocolMessageType,
-> = Type extends keyof GameProtocolMessageMap
-  ? {
-      type: Type;
-      payload: GameProtocolMessageMap[Type];
-    }
-  : never;
+export type GameProtocolMessage<Type extends GameProtocolMessageType> =
+  Type extends keyof GameProtocolMessageMap
+    ? {
+        type: Type;
+        payload: GameProtocolMessageMap[Type];
+      }
+    : never;
 
 export const validateGameActionMessage = (
   payload: unknown,
@@ -57,4 +56,3 @@ export const validateGameActionMessage = (
   }
   return result.data;
 };
-
