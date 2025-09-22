@@ -1,63 +1,60 @@
-/**
- * Game-specific protocol definitions used on top of the generic peer runtime.
- */
+import { z } from "zod";
 
-import type {
-  GameActionPayload,
-  GameErrorPayload,
-  GameResyncRequestPayload,
-  GameSnapshotAckPayload,
-  GameSnapshotPayload,
-  SynchronisedAction,
-} from "../game/types";
+import { actionSchema } from "@/lib/game/schema";
 
-/**
- * Semantic namespace used when negotiating protocol versions.
- */
-export const GAME_PROTOCOL_NAMESPACE = "keys.game";
+import { PeerRole } from "./peer";
 
-/**
- * Latest version of the synchronisation protocol. Bump the number whenever the
- * wire format or behaviour becomes incompatible with previous releases.
- */
-export const GAME_PROTOCOL_VERSION = "1.1.0" as const;
+export const GAME_PROTOCOL_NAMESPACE = "keys.game.actions";
 
-/**
- * Ordered list of protocol versions that the application understands. Earlier
- * entries are preferred when negotiating between peers.
- */
+export const GAME_PROTOCOL_VERSION = "1.0.0" as const;
+
 export const SUPPORTED_GAME_PROTOCOL_VERSIONS = [
   GAME_PROTOCOL_VERSION,
-  "1.0.0",
 ] as const;
 
 export type GameProtocolVersion =
   (typeof SUPPORTED_GAME_PROTOCOL_VERSIONS)[number];
 
-/**
- * Literal action types allowed to circulate after the initial snapshot.
- */
-export const SYNCHRONISED_ACTION_TYPES: readonly SynchronisedAction["type"][] =
-  ["turn/flipCard", "turn/end", "turn/guess", "game/reset"] as const;
+const peerRoleSchema = z.union([
+  z.literal(PeerRole.Host),
+  z.literal(PeerRole.Guest),
+]);
 
-export type SynchronisedActionType = (typeof SYNCHRONISED_ACTION_TYPES)[number];
+export const gameActionMessageSchema = z
+  .object({
+    actionId: z.string().min(1),
+    action: actionSchema,
+    issuerPeerId: z.string().min(1),
+    issuerRole: peerRoleSchema,
+    acknowledgedByHost: z.boolean().default(false),
+    relayedByPeerId: z.string().min(1).optional(),
+  })
+  .strict();
 
-/**
- * Payload contract for each game-specific message travelling on the data
- * channel. The {@link PeerRuntime} implementation automatically wraps the
- * payload into a timestamped envelope.
- */
+export type GameActionMessagePayload = z.infer<typeof gameActionMessageSchema>;
+
 export interface GameProtocolMessageMap {
-  "game/snapshot": GameSnapshotPayload;
-  "game/snapshot-ack": GameSnapshotAckPayload;
-  "game/action": GameActionPayload;
-  "game/resync-request": GameResyncRequestPayload;
-  "game/error": GameErrorPayload;
+  "game/action": GameActionMessagePayload;
 }
 
 export type GameProtocolMessageType = keyof GameProtocolMessageMap;
 
-export type GameProtocolMessage<Type extends GameProtocolMessageType> = {
-  type: Type;
-  payload: GameProtocolMessageMap[Type];
+export type GameProtocolMessage<
+  Type extends GameProtocolMessageType,
+> = Type extends keyof GameProtocolMessageMap
+  ? {
+      type: Type;
+      payload: GameProtocolMessageMap[Type];
+    }
+  : never;
+
+export const validateGameActionMessage = (
+  payload: unknown,
+): GameActionMessagePayload => {
+  const result = gameActionMessageSchema.safeParse(payload);
+  if (!result.success) {
+    throw result.error;
+  }
+  return result.data;
 };
+

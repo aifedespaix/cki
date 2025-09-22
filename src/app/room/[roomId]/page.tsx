@@ -23,6 +23,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -73,6 +74,23 @@ import {
 import type { HostPreparationRecord } from "@/lib/storage/session";
 import { loadHostPreparation } from "@/lib/storage/session";
 import { cn, createRandomId } from "@/lib/utils";
+import {
+  createActionReplicator,
+  type ActionReplicator,
+} from "@/lib/p2p/action-sync";
+import {
+  createPeer,
+  PeerRole,
+  type ConnectionPhase,
+  type PeerRuntime,
+} from "@/lib/p2p/peer";
+import {
+  GAME_PROTOCOL_NAMESPACE,
+  SUPPORTED_GAME_PROTOCOL_VERSIONS,
+  validateGameActionMessage,
+  type GameActionMessagePayload,
+  type GameProtocolMessageMap,
+} from "@/lib/p2p/protocol";
 
 interface Spectator {
   id: string;
@@ -93,6 +111,129 @@ type LoadState = "idle" | "loading" | "ready" | "error";
 const roleLabels: Record<PlayerRole, string> = {
   host: "Hôte",
   guest: "Invité",
+};
+
+interface RoomPeerCreationConfig {
+  role: PeerRole;
+  peerId: string;
+  metadata: Record<string, unknown>;
+}
+
+interface RoomPeerRuntimeState {
+  runtime: PeerRuntime<GameProtocolMessageMap> | null;
+  peerId: string | null;
+  remotePeerId: string | null;
+  phase: ConnectionPhase;
+  error: Error | null;
+}
+
+const createInitialPeerState = (): Omit<RoomPeerRuntimeState, "runtime"> => ({
+  peerId: null,
+  remotePeerId: null,
+  phase: "idle",
+  error: null,
+});
+
+const useRoomPeerRuntime = (
+  config: RoomPeerCreationConfig | null,
+  remotePeerId: string | null,
+): RoomPeerRuntimeState => {
+  const runtimeRef = useRef<PeerRuntime<GameProtocolMessageMap> | null>(null);
+  const [state, setState] = useState<Omit<RoomPeerRuntimeState, "runtime">>(
+    createInitialPeerState,
+  );
+
+  useEffect(() => {
+    if (!config) {
+      if (runtimeRef.current) {
+        runtimeRef.current.destroy();
+        runtimeRef.current = null;
+      }
+      setState(createInitialPeerState());
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const runtime = createPeer<GameProtocolMessageMap>({
+      role: config.role,
+      peerId: config.peerId,
+      metadata: config.metadata,
+      supportedProtocolVersions: SUPPORTED_GAME_PROTOCOL_VERSIONS,
+    });
+    runtimeRef.current = runtime;
+    setState({
+      peerId: runtime.peerId,
+      remotePeerId: runtime.remotePeerId,
+      phase: runtime.phase,
+      error: null,
+    });
+
+    const offPeerOpen = runtime.events.on("peer/open", ({ peerId }) => {
+      setState((previous) => ({ ...previous, peerId }));
+    });
+    const offRemote = runtime.events.on("connection/remote", ({ peerId }) => {
+      setState((previous) => ({ ...previous, remotePeerId: peerId }));
+    });
+    const offPhase = runtime.events.on("connection/phase", ({ phase }) => {
+      setState((previous) => ({ ...previous, phase }));
+    });
+    const offError = runtime.events.on("connection/error", ({ error }) => {
+      setState((previous) => ({ ...previous, error, phase: "error" }));
+    });
+    const offDisconnected = runtime.events.on(
+      "connection/disconnected",
+      () => {
+        setState((previous) => ({
+          ...previous,
+          remotePeerId: null,
+          phase: "reconnecting",
+        }));
+      },
+    );
+    const offPeerClose = runtime.events.on("peer/close", () => {
+      setState(createInitialPeerState());
+    });
+
+    return () => {
+      offPeerOpen();
+      offRemote();
+      offPhase();
+      offError();
+      offDisconnected();
+      offPeerClose();
+      runtime.destroy();
+      runtimeRef.current = null;
+      setState(createInitialPeerState());
+    };
+  }, [config]);
+
+  useEffect(() => {
+    if (!config || config.role !== PeerRole.Guest) {
+      return;
+    }
+    const runtime = runtimeRef.current;
+    if (!runtime) {
+      return;
+    }
+    if (!remotePeerId) {
+      runtime.disconnect();
+      return;
+    }
+    runtime.connect(remotePeerId).catch((error) => {
+      setState((previous) => ({ ...previous, error, phase: "error" }));
+    });
+  }, [config, remotePeerId]);
+
+  return {
+    runtime: runtimeRef.current,
+    peerId: state.peerId,
+    remotePeerId: state.remotePeerId,
+    phase: state.phase,
+    error: state.error,
+  };
 };
 
 interface InviteContext {
@@ -1117,6 +1258,58 @@ export default function RoomPage() {
   const [localGuestId] = useState(() => createRandomId("player"));
   const [localGuestName, setLocalGuestName] = useState<string | null>(null);
   const [isJoiningLobby, setIsJoiningLobby] = useState(false);
+  const resolvedPeerRole = useMemo<PeerRole | null>(() => {
+    if (loadState !== "ready") {
+      return null;
+    }
+    if (hostPreparation) {
+      return PeerRole.Host;
+    }
+    if (inviteContext) {
+      return PeerRole.Guest;
+    }
+    return null;
+  }, [loadState, hostPreparation, inviteContext]);
+  const localPeerIdentifier = useMemo(() => {
+    if (resolvedPeerRole === PeerRole.Host) {
+      return hostPreparation?.hostId ?? null;
+    }
+    if (resolvedPeerRole === PeerRole.Guest) {
+      return localGuestId;
+    }
+    return null;
+  }, [resolvedPeerRole, hostPreparation, localGuestId]);
+  const remotePeerIdentifier = useMemo(() => {
+    if (resolvedPeerRole === PeerRole.Guest) {
+      return inviteContext?.hostId ?? null;
+    }
+    return null;
+  }, [resolvedPeerRole, inviteContext]);
+  const peerMetadata = useMemo(() => {
+    if (!resolvedPeerRole) {
+      return null;
+    }
+    return {
+      roomId,
+      role: resolvedPeerRole,
+      namespace: GAME_PROTOCOL_NAMESPACE,
+    } satisfies RoomPeerCreationConfig["metadata"];
+  }, [resolvedPeerRole, roomId]);
+  const peerCreationConfig = useMemo(() => {
+    if (!resolvedPeerRole || !localPeerIdentifier || !peerMetadata) {
+      return null;
+    }
+    return {
+      role: resolvedPeerRole,
+      peerId: localPeerIdentifier,
+      metadata: peerMetadata,
+    } satisfies RoomPeerCreationConfig;
+  }, [resolvedPeerRole, localPeerIdentifier, peerMetadata]);
+  const peerConnection = useRoomPeerRuntime(
+    peerCreationConfig,
+    remotePeerIdentifier,
+  );
+  const replicatorRef = useRef<ActionReplicator | null>(null);
   const inviteHostName = useMemo(() => {
     const trimmed = hostNameParam?.trim();
     return trimmed && trimmed.length > 0 ? trimmed : null;
@@ -1297,21 +1490,186 @@ export default function RoomPage() {
     const timeout = window.setTimeout(() => setActionError(null), 4000);
     return () => window.clearTimeout(timeout);
   }, [actionError]);
-  const applyGameAction = useCallback((action: Action) => {
-    setGameState((previous) => {
-      try {
-        const next = reduceGameState(previous, action);
+
+  useEffect(() => {
+    const role = peerCreationConfig?.role ?? null;
+    const runtime = peerConnection.runtime;
+    const peerId =
+      peerConnection.peerId ?? peerCreationConfig?.peerId ?? null;
+
+    if (!runtime || !role || !peerId) {
+      replicatorRef.current = null;
+      return;
+    }
+
+    const sendMessage = (payload: GameActionMessagePayload) => {
+      const validated = validateGameActionMessage(payload);
+      runtime.send("game/action", validated);
+    };
+
+    const replicator = createActionReplicator({
+      role,
+      localPeerId: peerId,
+      send: sendMessage,
+      shouldDeferLocalApplication: (action) =>
+        role === PeerRole.Guest && action.type === "game/joinLobby",
+      generateActionId: () =>
+        createRandomId(roomId ? `action-${roomId}` : "action"),
+      onApply: (action, metadata) => {
+        setGameState((previous) => {
+          const next = reduceGameState(previous, action);
+          return next;
+        });
         setActionError(null);
-        return next;
+        if (
+          role === PeerRole.Guest &&
+          metadata.source === "remote" &&
+          action.type === "game/joinLobby" &&
+          action.payload.player.id === localGuestId
+        ) {
+          setIsJoiningLobby(false);
+        }
+      },
+      onError: (error, { action }) => {
+        if (role === PeerRole.Guest && action.type === "game/joinLobby") {
+          setIsJoiningLobby(false);
+        }
+        setActionError(error.message);
+      },
+      onAcknowledged: (_actionId, payload) => {
+        if (
+          role === PeerRole.Guest &&
+          payload.acknowledgedByHost &&
+          payload.action.type === "game/joinLobby" &&
+          payload.action.payload.player.id === localGuestId
+        ) {
+          setIsJoiningLobby(false);
+        }
+      },
+    });
+
+    replicatorRef.current = replicator;
+
+    return () => {
+      if (replicatorRef.current === replicator) {
+        replicatorRef.current = null;
+      }
+    };
+  }, [
+    peerConnection.runtime,
+    peerConnection.peerId,
+    peerCreationConfig,
+    roomId,
+    localGuestId,
+    setGameState,
+    setActionError,
+    setIsJoiningLobby,
+  ]);
+
+  useEffect(() => {
+    const runtime = peerConnection.runtime;
+    if (!runtime) {
+      return;
+    }
+    const unsubscribe = runtime.onMessage("game/action", (message) => {
+      try {
+        const payload = validateGameActionMessage(message.payload);
+        replicatorRef.current?.handleRemote(payload);
       } catch (error) {
+        const details =
+          error instanceof Error
+            ? error.message
+            : "Message distant invalide.";
+        console.error("Invalid P2P action payload", error);
+        setActionError(`Action distante invalide : ${details}`);
+        if (resolvedPeerRole === PeerRole.Guest) {
+          setIsJoiningLobby(false);
+        }
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [peerConnection.runtime, resolvedPeerRole, setActionError, setIsJoiningLobby]);
+
+  useEffect(() => {
+    if (resolvedPeerRole !== PeerRole.Guest) {
+      return;
+    }
+    if (peerConnection.phase === "error" && peerConnection.error) {
+      setIsJoiningLobby(false);
+      setActionError(
+        peerConnection.error.message ??
+          "Erreur de connexion pair-à-pair. Réessayez plus tard.",
+      );
+    }
+  }, [
+    resolvedPeerRole,
+    peerConnection.phase,
+    peerConnection.error,
+    setActionError,
+    setIsJoiningLobby,
+  ]);
+
+  useEffect(() => {
+    if (resolvedPeerRole !== PeerRole.Guest && isJoiningLobby) {
+      setIsJoiningLobby(false);
+    }
+  }, [resolvedPeerRole, isJoiningLobby, setIsJoiningLobby]);
+
+  const applyGameAction = useCallback(
+    (action: Action) => {
+      const replicator = replicatorRef.current;
+      if (!replicator) {
+        if (resolvedPeerRole === PeerRole.Guest) {
+          const error = new Error(
+            "Connexion pair-à-pair indisponible. Réessayez une fois la synchronisation établie.",
+          );
+          setActionError(error.message);
+          throw error;
+        }
+        try {
+          setGameState((previous) => {
+            const next = reduceGameState(previous, action);
+            return next;
+          });
+          setActionError(null);
+          return;
+        } catch (error) {
+          if (error instanceof InvalidGameActionError) {
+            setActionError(error.message);
+            throw error;
+          }
+          if (error instanceof Error) {
+            setActionError(error.message);
+            throw error;
+          }
+          throw error;
+        }
+      }
+
+      try {
+        replicator.dispatch(action);
+      } catch (error) {
+        if (
+          resolvedPeerRole === PeerRole.Guest &&
+          action.type === "game/joinLobby"
+        ) {
+          setIsJoiningLobby(false);
+        }
         if (error instanceof InvalidGameActionError) {
           setActionError(error.message);
-          return previous;
+          throw error;
+        }
+        if (error instanceof Error) {
+          setActionError(error.message);
+          throw error;
         }
         throw error;
       }
-    });
-  }, []);
+    },
+    [resolvedPeerRole, setGameState, setActionError, setIsJoiningLobby],
+  );
 
   const players = useMemo(() => selectPlayers(gameState), [gameState]);
   useEffect(() => {
@@ -1443,8 +1801,9 @@ export default function RoomPage() {
           type: "game/joinLobby",
           payload: { player: { id: localGuestId, name: trimmed } },
         });
-      } finally {
+      } catch (error) {
         setIsJoiningLobby(false);
+        throw error;
       }
     },
     [applyGameAction, localGuestId],

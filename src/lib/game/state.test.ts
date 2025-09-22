@@ -17,6 +17,7 @@ import {
   type Grid,
   PlayerRole,
   type PlayingState,
+  type Action,
 } from "./types";
 
 const createGrid = (): Grid => ({
@@ -102,6 +103,26 @@ describe("reduceGameState", () => {
         payload: { player: { id: guestId, name: "Guest Again" } },
       }),
     ).toThrow(InvalidGameActionError);
+  });
+
+  it("rejects identical join lobby payloads applied twice", () => {
+    const lobby = reduceGameState(createInitialState(), {
+      type: "game/createLobby",
+      payload: {
+        grid: createGrid(),
+        host: { id: hostId, name: "Host", role: PlayerRole.Host },
+      },
+    });
+    const joinAction = {
+      type: "game/joinLobby" as const,
+      payload: { player: { id: guestId, name: "Guest", role: PlayerRole.Guest } },
+    } satisfies Extract<Action, { type: "game/joinLobby" }>;
+
+    const withGuest = reduceGameState(lobby, joinAction);
+
+    expect(() => reduceGameState(withGuest, joinAction)).toThrow(
+      InvalidGameActionError,
+    );
   });
 
   it("rejects more than two players in a lobby", () => {
