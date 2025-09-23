@@ -222,7 +222,12 @@ function CardSelectionSection({
           aria-label="Cartes disponibles"
         >
           <div className="px-5 pb-5 sm:px-6">
-            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <ul
+              className={cn(
+                "grid gap-4",
+                getCardGridTemplateClasses(cardCount),
+              )}
+            >
               {cards.map((card) => (
                 <li key={card.id} className="list-none">
                   <SelectableCard
@@ -258,6 +263,16 @@ type SelectableCardProps = {
   readonly onSelect: () => void;
 };
 
+function getCardGridTemplateClasses(cardCount: number): string {
+  if (cardCount <= 4) {
+    return "grid-cols-1 sm:grid-cols-2";
+  }
+  if (cardCount <= 12) {
+    return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3";
+  }
+  return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
+}
+
 /**
  * Renders a selectable card thumbnail with keyboard support and selected
  * states suitable for the target selection grid.
@@ -281,28 +296,25 @@ function SelectableCard({ card, isSelected, onSelect }: SelectableCardProps) {
       aria-pressed={isSelected}
       aria-label={`Sélectionner ${card.label}`}
       className={cn(
-        "flex h-full flex-col gap-3 rounded-xl border bg-background/95 p-3 text-left shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        "flex h-full flex-col rounded-xl border bg-background/95 p-3 text-left shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         isSelected
           ? "border-primary/70 ring-2 ring-primary/60 ring-offset-2"
           : "border-border/60 hover:border-border",
       )}
     >
-      <CardArtwork card={card}>
-        {isSelected ? (
-          <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-1 text-xs font-medium text-primary-foreground shadow">
-            <CheckCircle2Icon aria-hidden className="size-3.5" />
-            Sélectionnée
-          </span>
-        ) : null}
-      </CardArtwork>
-      <div className="space-y-1">
-        <p className="text-sm font-semibold text-foreground">{card.label}</p>
-        {card.description ? (
-          <p className="text-xs text-muted-foreground line-clamp-3">
-            {card.description}
-          </p>
-        ) : null}
-      </div>
+      <figure className="flex h-full flex-col items-stretch gap-3">
+        <CardArtwork card={card}>
+          {isSelected ? (
+            <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-1 text-xs font-medium text-primary-foreground shadow">
+              <CheckCircle2Icon aria-hidden className="size-3.5" />
+              Sélectionnée
+            </span>
+          ) : null}
+        </CardArtwork>
+        <figcaption className="text-sm font-semibold text-foreground">
+          {card.label}
+        </figcaption>
+      </figure>
     </button>
   );
 }
