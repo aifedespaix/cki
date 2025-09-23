@@ -74,6 +74,7 @@ import {
   selectActivePlayer,
   selectPlayers,
 } from "@/lib/game/state";
+import { applySnapshot, createGameJournal } from "@/lib/game/sync";
 import {
   type Action,
   type Card as GameCard,
@@ -92,8 +93,12 @@ import {
   GAME_PROTOCOL_NAMESPACE,
   GAME_PROTOCOL_VERSION,
   type GameActionMessagePayload,
+  type GameSnapshotAckMessagePayload,
+  type GameSnapshotMessagePayload,
   type SpectatorUpdateMessagePayload,
   validateGameActionMessage,
+  validateGameSnapshotAckMessage,
+  validateGameSnapshotMessage,
   validateSpectatorRosterMessage,
   validateSpectatorUpdateMessage,
 } from "@/lib/p2p/protocol";
@@ -273,6 +278,11 @@ export default function RoomPage() {
   const replicatorRef = useRef<ActionReplicator | null>(null);
   const playersRef = useRef<readonly Player[]>([]);
   const pendingRemoteActionsRef = useRef<RemoteActionQueue | null>(null);
+  const gameStateRef = useRef<GameState>(gameState);
+  const lastActionIdRef = useRef<string | null>(null);
+  const lastSnapshotIdSentRef = useRef<string | null>(null);
+  const hasAppliedInitialSnapshotRef = useRef(false);
+  const snapshotJournalRef = useRef(createGameJournal());
   const lastGuessNotificationKeyRef = useRef<string | null>(null);
   const hasAppliedStoredSessionRef = useRef(false);
   const hasInitialisedGameStateRef = useRef(false);
@@ -299,6 +309,14 @@ export default function RoomPage() {
     const trimmed = hostIdParam?.trim();
     return trimmed && trimmed.length > 0 ? trimmed : null;
   }, [hostIdParam]);
+  useEffect(() => {
+    if (resolvedPeerRole === PeerRole.Host) {
+      hasAppliedInitialSnapshotRef.current = true;
+    }
+    if (resolvedPeerRole === PeerRole.Guest) {
+      hasAppliedInitialSnapshotRef.current = false;
+    }
+  }, [resolvedPeerRole]);
   const fallbackHostId = useMemo(
     () => createRandomId(roomId ? `host-${roomId}` : "host"),
     [roomId],
@@ -715,13 +733,101 @@ export default function RoomPage() {
   const processRemotePayload = useCallback(
     (payload: GameActionMessagePayload) => {
       const replicator = replicatorRef.current;
-      if (!replicator) {
+      const shouldDefer =
+        resolvedPeerRole === PeerRole.Guest &&
+        !hasAppliedInitialSnapshotRef.current;
+      if (!replicator || shouldDefer) {
         pendingRemoteActionsRef.current?.enqueue(payload);
         return;
       }
-      replicator.handleRemote(payload);
+      const result = replicator.handleRemote(payload);
+      if (result.applied || result.wasDuplicate) {
+        lastActionIdRef.current = result.actionId;
+      }
     },
-    [],
+    [resolvedPeerRole],
+  );
+
+  const flushQueuedRemoteActions = useCallback(() => {
+    const replicator = replicatorRef.current;
+    if (!replicator) {
+      return;
+    }
+    if (
+      resolvedPeerRole === PeerRole.Guest &&
+      !hasAppliedInitialSnapshotRef.current
+    ) {
+      return;
+    }
+    pendingRemoteActionsRef.current?.drain(
+      (payload) => {
+        const result = replicator.handleRemote(payload);
+        if (result.applied || result.wasDuplicate) {
+          lastActionIdRef.current = result.actionId;
+        }
+      },
+      (error) => {
+        handleRemoteProcessingError(error);
+      },
+    );
+  }, [resolvedPeerRole, handleRemoteProcessingError]);
+
+  const handleSnapshotMessage = useCallback(
+    (payload: GameSnapshotMessagePayload) => {
+      if (resolvedPeerRole !== PeerRole.Guest) {
+        return;
+      }
+
+      let nextState: GameState;
+      try {
+        const { state } = applySnapshot(payload, snapshotJournalRef.current);
+        nextState = state;
+      } catch (error) {
+        console.error("Impossible d’appliquer l’instantané distant.", error);
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Impossible d’appliquer l’instantané distant.",
+        );
+        return;
+      }
+
+      setGameState(nextState);
+      setActionError(null);
+      if (
+        resolvedPeerRole === PeerRole.Guest &&
+        nextState.players.some((player) => player.id === localGuestId)
+      ) {
+        setIsJoiningLobby(false);
+      }
+      hasAppliedInitialSnapshotRef.current = true;
+      lastActionIdRef.current = payload.lastActionId;
+
+      const runtime = peerConnection.runtime;
+      if (runtime && runtime.protocolVersion === GAME_PROTOCOL_VERSION) {
+        const acknowledgement: GameSnapshotAckMessagePayload = {
+          snapshotId: payload.snapshotId,
+          receivedAt: Date.now(),
+          lastActionId: payload.lastActionId,
+        } satisfies GameSnapshotAckMessagePayload;
+        try {
+          runtime.send("game/snapshot-ack", acknowledgement);
+        } catch (error) {
+          console.error(
+            "Impossible d’envoyer l’accusé de réception du snapshot.",
+            error,
+          );
+        }
+      }
+
+      flushQueuedRemoteActions();
+    },
+    [
+      resolvedPeerRole,
+      localGuestId,
+      peerConnection.runtime,
+      flushQueuedRemoteActions,
+    ],
   );
 
   useEffect(() => {
@@ -785,14 +891,7 @@ export default function RoomPage() {
 
     replicatorRef.current = replicator;
 
-    pendingRemoteActionsRef.current?.drain(
-      (payload) => {
-        replicator.handleRemote(payload);
-      },
-      (error) => {
-        handleRemoteProcessingError(error);
-      },
-    );
+    flushQueuedRemoteActions();
 
     return () => {
       if (replicatorRef.current === replicator) {
@@ -805,7 +904,7 @@ export default function RoomPage() {
     peerCreationConfig,
     roomId,
     localGuestId,
-    handleRemoteProcessingError,
+    flushQueuedRemoteActions,
     resetAfterRestart,
   ]);
 
@@ -822,6 +921,33 @@ export default function RoomPage() {
           processRemotePayload(payload);
         } catch (error) {
           handleRemoteProcessingError(error);
+        }
+      },
+    );
+    const unsubscribeSnapshot = runtime.onMessage(
+      "game/snapshot",
+      (message) => {
+        try {
+          const payload = validateGameSnapshotMessage(message.payload);
+          handleSnapshotMessage(payload);
+        } catch (error) {
+          console.error("Instantané de partie invalide.", error);
+        }
+      },
+    );
+    const unsubscribeSnapshotAck = runtime.onMessage(
+      "game/snapshot-ack",
+      (message) => {
+        if (resolvedPeerRole !== PeerRole.Host) {
+          return;
+        }
+        try {
+          const payload = validateGameSnapshotAckMessage(message.payload);
+          if (payload.snapshotId === lastSnapshotIdSentRef.current) {
+            lastSnapshotIdSentRef.current = null;
+          }
+        } catch (error) {
+          console.error("Accusé de réception de snapshot invalide.", error);
         }
       },
     );
@@ -865,6 +991,8 @@ export default function RoomPage() {
     );
     return () => {
       unsubscribeGameAction();
+      unsubscribeSnapshot();
+      unsubscribeSnapshotAck();
       unsubscribeSpectatorUpdate();
       unsubscribeSpectatorRoster();
     };
@@ -872,8 +1000,68 @@ export default function RoomPage() {
     peerConnection.runtime,
     processRemotePayload,
     handleRemoteProcessingError,
+    handleSnapshotMessage,
     resolvedPeerRole,
   ]);
+
+  useEffect(() => {
+    if (resolvedPeerRole !== PeerRole.Host) {
+      return;
+    }
+    const runtime = peerConnection.runtime;
+    if (!runtime) {
+      return;
+    }
+
+    const sendSnapshot = () => {
+      if (runtime.protocolVersion !== GAME_PROTOCOL_VERSION) {
+        return;
+      }
+      const snapshotId = createRandomId(
+        roomId ? `snapshot-${roomId}` : "snapshot",
+      );
+      const payload: GameSnapshotMessagePayload = {
+        snapshotId,
+        issuedAt: Date.now(),
+        state: gameStateRef.current,
+        lastActionId: lastActionIdRef.current,
+      } satisfies GameSnapshotMessagePayload;
+      try {
+        runtime.send("game/snapshot", payload);
+        lastSnapshotIdSentRef.current = snapshotId;
+      } catch (error) {
+        console.error("Impossible d’envoyer l’instantané de partie.", error);
+      }
+    };
+
+    const offRemote = runtime.events.on("connection/remote", ({ peerId }) => {
+      if (!peerId) {
+        return;
+      }
+      sendSnapshot();
+    });
+
+    if (
+      runtime.remotePeerId &&
+      runtime.phase === "connected" &&
+      runtime.protocolVersion === GAME_PROTOCOL_VERSION
+    ) {
+      sendSnapshot();
+    }
+
+    return () => {
+      offRemote();
+    };
+  }, [peerConnection.runtime, resolvedPeerRole, roomId]);
+
+  useEffect(() => {
+    if (resolvedPeerRole !== PeerRole.Guest) {
+      return;
+    }
+    if (peerConnection.phase !== "connected") {
+      hasAppliedInitialSnapshotRef.current = false;
+    }
+  }, [resolvedPeerRole, peerConnection.phase]);
 
   useEffect(() => {
     if (resolvedPeerRole !== PeerRole.Guest) {
@@ -926,7 +1114,8 @@ export default function RoomPage() {
       }
 
       try {
-        replicator.dispatch(action);
+        const result = replicator.dispatch(action);
+        lastActionIdRef.current = result.actionId;
       } catch (error) {
         if (
           resolvedPeerRole === PeerRole.Guest &&
@@ -984,6 +1173,9 @@ export default function RoomPage() {
   }, [handleRemotePeerDisconnected]);
 
   const players = useMemo(() => selectPlayers(gameState), [gameState]);
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
   useEffect(() => {
     playersRef.current = players;
   }, [players]);
