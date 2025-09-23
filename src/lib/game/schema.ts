@@ -301,6 +301,12 @@ export const resetActionSchema = z
   })
   .strict();
 
+export const restartActionSchema = z
+  .object({
+    type: z.literal<"game/restart">("game/restart"),
+  })
+  .strict();
+
 export const leaveActionSchema = z
   .object({
     type: z.literal<"game/leave">("game/leave"),
@@ -316,6 +322,7 @@ export const synchronisedActionSchema = z.discriminatedUnion("type", [
   endTurnActionSchema,
   guessActionSchema,
   resetActionSchema,
+  restartActionSchema,
   leaveActionSchema,
 ]);
 
@@ -329,6 +336,7 @@ export const actionSchema: z.ZodType<Action> = z.discriminatedUnion("type", [
   endTurnActionSchema,
   guessActionSchema,
   resetActionSchema,
+  restartActionSchema,
   leaveActionSchema,
 ]);
 

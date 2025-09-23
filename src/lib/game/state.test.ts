@@ -524,6 +524,40 @@ describe("reduceGameState", () => {
     });
   });
 
+  it("restarts an ongoing match and keeps only the host in the lobby", () => {
+    const playing = createPlayingState();
+
+    const restarted = reduceGameState(playing, { type: "game/restart" });
+
+    expect(restarted.status).toBe(GameStatus.Lobby);
+    expect(restarted.grid).toBe(playing.grid);
+    expect(restarted.players).toHaveLength(1);
+    expect(restarted.players[0]).toMatchObject({
+      id: hostId,
+      role: PlayerRole.Host,
+      secretCardId: undefined,
+      flippedCardIds: [],
+    });
+  });
+
+  it("restarts a finished match and clears all previous turn data", () => {
+    const playing = createPlayingState();
+    const finished = reduceGameState(playing, {
+      type: "turn/guess",
+      payload: { playerId: hostId, targetPlayerId: guestId, cardId: "card-d" },
+    });
+
+    const restarted = reduceGameState(finished, { type: "game/restart" });
+
+    expect(restarted.status).toBe(GameStatus.Lobby);
+    expect(restarted.players).toHaveLength(1);
+    expect(restarted.players[0]).toMatchObject({
+      id: hostId,
+      secretCardId: undefined,
+      flippedCardIds: [],
+    });
+  });
+
   it("resets back to the idle state", () => {
     const playing = createPlayingState();
     const finished = reduceGameState(playing, {

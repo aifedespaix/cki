@@ -1,5 +1,8 @@
 "use client";
 
+import { RotateCcwIcon } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -15,9 +18,16 @@ import { getConclusionLabel } from "./roomLabels";
 interface FinalResultCardProps {
   state: Extract<GameState, { status: "finished" }>;
   cardLookup: Map<string, GameCard>;
+  onRestartMatch?: () => void;
+  restartDisabled?: boolean;
 }
 
-export function FinalResultCard({ state, cardLookup }: FinalResultCardProps) {
+export function FinalResultCard({
+  state,
+  cardLookup,
+  onRestartMatch,
+  restartDisabled = false,
+}: FinalResultCardProps) {
   const winner = selectWinner(state);
   const guess = state.finalGuess;
   const guessedCard = cardLookup.get(guess.cardId);
@@ -34,7 +44,7 @@ export function FinalResultCard({ state, cardLookup }: FinalResultCardProps) {
         </CardTitle>
         <CardDescription>{getConclusionLabel(state.reason)}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-2 text-sm">
+      <CardContent className="space-y-3 text-sm">
         <p className="text-foreground">
           {guesser ? guesser.name : "Un joueur"} a tenté de deviner{" "}
           {guessedCard ? guessedCard.label : guess.cardId} chez{" "}
@@ -44,6 +54,17 @@ export function FinalResultCard({ state, cardLookup }: FinalResultCardProps) {
           Tour {state.turn} —{" "}
           {guess.correct ? "réponse correcte." : "réponse incorrecte."}
         </p>
+        {onRestartMatch ? (
+          <Button
+            type="button"
+            onClick={onRestartMatch}
+            disabled={restartDisabled}
+            className="w-full sm:w-auto"
+          >
+            <RotateCcwIcon aria-hidden className="mr-2 size-4" />
+            Relancer une manche
+          </Button>
+        ) : null}
       </CardContent>
     </Card>
   );

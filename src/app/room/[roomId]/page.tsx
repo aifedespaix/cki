@@ -683,6 +683,22 @@ export default function RoomPage() {
     return () => window.clearTimeout(timeout);
   }, [actionError]);
 
+  const resetAfterRestart = useCallback(() => {
+    hasInitialisedGameStateRef.current = false;
+    setSecretSelectionPlayerId(null);
+    setHasPromptedSecretSelection(false);
+    setGuessConfirmationRequest(null);
+    setActionError(null);
+    setRoleSelectionError(null);
+    setIsJoiningLobby(false);
+    lastGuessNotificationKeyRef.current = null;
+    if (hostPreparation) {
+      setIsRoleSelectionOpen(false);
+    } else {
+      setIsRoleSelectionOpen(true);
+    }
+  }, [hostPreparation]);
+
   const handleRemoteProcessingError = useCallback(
     (error: unknown) => {
       const details =
@@ -737,6 +753,9 @@ export default function RoomPage() {
           return next;
         });
         setActionError(null);
+        if (action.type === "game/restart") {
+          resetAfterRestart();
+        }
         if (
           role === PeerRole.Guest &&
           metadata.source === "remote" &&
@@ -787,6 +806,7 @@ export default function RoomPage() {
     roomId,
     localGuestId,
     handleRemoteProcessingError,
+    resetAfterRestart,
   ]);
 
   useEffect(() => {
@@ -1883,6 +1903,14 @@ export default function RoomPage() {
     });
   }, [applyGameAction, localPlayer]);
 
+  const handleRestartMatch = useCallback(() => {
+    if (gameState.status === GameStatus.Idle) {
+      return;
+    }
+    applyGameAction({ type: "game/restart" });
+    resetAfterRestart();
+  }, [applyGameAction, gameState.status, resetAfterRestart]);
+
   const boardItems = useMemo(() => {
     if (!grid) {
       return [] as Array<{ key: string; content: ReactNode }>;
@@ -2152,13 +2180,15 @@ export default function RoomPage() {
     !canonicalLocalPlayer ||
     activePlayerId !== canonicalLocalPlayer.id;
 
+  const canRestartMatch =
+    isLocalHost && gameState.status === GameStatus.Finished;
   const turnBarHostControls = {
     onNextTurn: isLocalHost ? handleEndTurn : undefined,
     nextTurnDisabled: hostNextTurnDisabled,
     onPause: undefined,
     pauseDisabled: true,
-    onResetRound: undefined,
-    resetDisabled: true,
+    onRestartMatch: canRestartMatch ? handleRestartMatch : undefined,
+    restartDisabled: !canRestartMatch,
   } as const;
 
   return (
@@ -2359,7 +2389,11 @@ export default function RoomPage() {
                 </div>
               ) : null}
               {gameState.status === GameStatus.Finished ? (
-                <FinalResultCard state={gameState} cardLookup={cardLookup} />
+                <FinalResultCard
+                  state={gameState}
+                  cardLookup={cardLookup}
+                  onRestartMatch={isLocalHost ? handleRestartMatch : undefined}
+                />
               ) : null}
             </div>
           </div>
