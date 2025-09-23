@@ -24,6 +24,7 @@ import {
   type HeaderActionState,
   useHeaderActionRegistration,
 } from "@/components/app/HeaderActionsContext";
+import { ActiveTurnNotice } from "@/components/room/ActiveTurnNotice";
 import { BoardsArea, type BoardsLayout } from "@/components/room/BoardsArea";
 import { FinalResultCard } from "@/components/room/FinalResultCard";
 import {
@@ -146,6 +147,11 @@ interface GuessConfirmationRequest {
   candidateCardId: string;
   lastMaskedCardId: string;
 }
+
+type ActiveTurnNoticeContent = {
+  readonly title: string;
+  readonly description: string;
+};
 
 const SECRET_SELECTION_REQUIREMENT_MESSAGE =
   "Chaque joueur doit choisir une carte secrète avant de commencer.";
@@ -1394,6 +1400,38 @@ export default function RoomPage() {
     Boolean(localPlayer) &&
     activePlayerId === localPlayer?.id;
 
+  const activeTurnNotice = useMemo<ActiveTurnNoticeContent | null>(() => {
+    if (gameState.status !== GameStatus.Playing) {
+      return null;
+    }
+    if (!activePlayer) {
+      return null;
+    }
+
+    if (isLocalTurn) {
+      return {
+        title: "À vous de jouer",
+        description:
+          "Les deux plateaux restent visibles pour vous et les spectateurs : masquez les cartes qui ne correspondent pas ou annoncez votre proposition.",
+      };
+    }
+
+    const playerName = activePlayer.name;
+    if (isSpectatorView) {
+      return {
+        title: `Tour de ${playerName}`,
+        description:
+          "Les deux plateaux sont affichés pour que les spectateurs suivent chaque action en direct.",
+      };
+    }
+
+    return {
+      title: `Tour de ${playerName}`,
+      description:
+        "Observez votre adversaire : les deux plateaux restent visibles pendant son tour afin de préparer votre prochaine action.",
+    };
+  }, [activePlayer, gameState.status, isLocalTurn, isSpectatorView]);
+
   const handleJoinAsGuest = useCallback(
     (nickname: string) => {
       const trimmed = nickname.trim();
@@ -2100,12 +2138,23 @@ export default function RoomPage() {
           </span>
         </div>
       </section>
-      <div
+      {activeTurnNotice ? (
+        <ActiveTurnNotice
+          title={activeTurnNotice.title}
+          description={activeTurnNotice.description}
+          className="mt-4"
+        />
+      ) : null}
+      <section
+        aria-labelledby="boards-area-title"
         className={cn(
           "flex flex-1 min-h-0 gap-4 transition-[flex-direction] duration-300 ease-out",
           isBoardsStacked ? "flex-col" : "flex-row",
         )}
       >
+        <h2 id="boards-area-title" className="sr-only">
+          Plateaux des joueurs
+        </h2>
         <div className="relative flex flex-1 min-h-0 items-center justify-center overflow-hidden rounded-3xl border border-border/70 bg-muted/20 shadow-inner">
           <BoardsArea
             boards={boardItems}
@@ -2231,7 +2280,7 @@ export default function RoomPage() {
             </div>
           </div>
         </aside>
-      </div>
+      </section>
       <TurnBar
         turn={turn}
         activePlayerName={activePlayerName}
