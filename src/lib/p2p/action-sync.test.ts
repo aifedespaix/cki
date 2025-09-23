@@ -228,4 +228,76 @@ describe("action replication integration", () => {
     const duplicateAck = guestReplicator.handleRemote(acknowledgement);
     expect(duplicateAck.applied).toBe(false);
   });
+
+  it("propagates leave actions from the host to the guest", () => {
+    let hostState = createHostLobby();
+    let guestState = hostState;
+
+    const hostOutbox: GameActionMessagePayload[] = [];
+    const guestOutbox: GameActionMessagePayload[] = [];
+
+    const hostReplicator = createActionReplicator({
+      role: PeerRole.Host,
+      localPeerId: "peer-host",
+      send: (payload) => {
+        hostOutbox.push(payload);
+      },
+      onApply: (action) => {
+        hostState = reduceGameState(hostState, action);
+      },
+    });
+
+    const guestReplicator = createActionReplicator({
+      role: PeerRole.Guest,
+      localPeerId: "peer-guest",
+      send: (payload) => {
+        guestOutbox.push(payload);
+      },
+      shouldDeferLocalApplication: (action) => action.type === "game/joinLobby",
+      onApply: (action) => {
+        guestState = reduceGameState(guestState, action);
+      },
+    });
+
+    const joinAction: Action = {
+      type: "game/joinLobby",
+      payload: { player: { id: guestId, name: "Guest" } },
+    };
+
+    guestReplicator.dispatch(joinAction);
+    const joinMessage = guestOutbox.shift();
+    if (!joinMessage) {
+      throw new Error("Expected join message to be sent");
+    }
+    hostReplicator.handleRemote(joinMessage);
+    const joinAck = hostOutbox.shift();
+    if (!joinAck) {
+      throw new Error("Expected join acknowledgement");
+    }
+    guestReplicator.handleRemote(joinAck);
+
+    const leaveAction: Action = {
+      type: "game/leave",
+      payload: { playerId: guestId },
+    };
+
+    const dispatchResult = hostReplicator.dispatch(leaveAction);
+    expect(dispatchResult.appliedLocally).toBe(true);
+    expect(hostState.status).toBe(GameStatus.Lobby);
+    expect(hostState.players.some((player) => player.id === guestId)).toBe(
+      false,
+    );
+
+    const leaveMessage = hostOutbox.shift();
+    expect(leaveMessage).toBeDefined();
+    if (!leaveMessage) {
+      throw new Error("Leave message missing");
+    }
+
+    const guestResult = guestReplicator.handleRemote(leaveMessage);
+    expect(guestResult.applied).toBe(true);
+    expect(guestState.players.some((player) => player.id === guestId)).toBe(
+      false,
+    );
+  });
 });

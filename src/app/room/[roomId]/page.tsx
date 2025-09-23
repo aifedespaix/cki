@@ -123,6 +123,7 @@ import { cn, createRandomId } from "@/lib/utils";
 import { analyseGuessConfirmationContext } from "./guessConfirmation";
 import {
   type RoomPeerCreationConfig,
+  type RoomPeerRuntimeOptions,
   useRoomPeerRuntime,
 } from "./hooks/useRoomPeerRuntime";
 
@@ -152,6 +153,10 @@ type ActiveTurnNoticeContent = {
   readonly title: string;
   readonly description: string;
 };
+
+type RemoteDisconnectEvent = Parameters<
+  NonNullable<RoomPeerRuntimeOptions["onRemoteDisconnect"]>
+>[0];
 
 const SECRET_SELECTION_REQUIREMENT_MESSAGE =
   "Chaque joueur doit choisir une carte secrète avant de commencer.";
@@ -250,11 +255,23 @@ export default function RoomPage() {
       metadata: peerMetadata,
     } satisfies RoomPeerCreationConfig;
   }, [resolvedPeerRole, localPeerIdentifier, peerMetadata]);
+  const remoteDisconnectHandlerRef =
+    useRef<RoomPeerRuntimeOptions["onRemoteDisconnect"]>();
+  const peerRuntimeOptions = useMemo<RoomPeerRuntimeOptions>(
+    () => ({
+      onRemoteDisconnect: (event) => {
+        remoteDisconnectHandlerRef.current?.(event);
+      },
+    }),
+    [],
+  );
   const peerConnection = useRoomPeerRuntime(
     peerCreationConfig,
     remotePeerIdentifier,
+    peerRuntimeOptions,
   );
   const replicatorRef = useRef<ActionReplicator | null>(null);
+  const playersRef = useRef<readonly Player[]>([]);
   const pendingRemoteActionsRef = useRef<RemoteActionQueue | null>(null);
   const lastGuessNotificationKeyRef = useRef<string | null>(null);
   const hasAppliedStoredSessionRef = useRef(false);
@@ -911,7 +928,45 @@ export default function RoomPage() {
     [resolvedPeerRole],
   );
 
+  const handleRemotePeerDisconnected = useCallback(
+    (event: RemoteDisconnectEvent) => {
+      if (resolvedPeerRole !== PeerRole.Host) {
+        return;
+      }
+      const peerId = event.peerId;
+      if (!peerId) {
+        return;
+      }
+      const participantPresent = playersRef.current.some(
+        (player) => player.id === peerId,
+      );
+      if (!participantPresent) {
+        return;
+      }
+      try {
+        applyGameAction({
+          type: "game/leave",
+          payload: { playerId: peerId },
+        });
+        setSpectators((current) => removeSpectatorById(current, peerId));
+      } catch (error) {
+        console.error("Impossible de retirer le joueur déconnecté.", error);
+        if (error instanceof Error) {
+          setActionError(error.message);
+        }
+      }
+    },
+    [applyGameAction, resolvedPeerRole],
+  );
+
+  useEffect(() => {
+    remoteDisconnectHandlerRef.current = handleRemotePeerDisconnected;
+  }, [handleRemotePeerDisconnected]);
+
   const players = useMemo(() => selectPlayers(gameState), [gameState]);
+  useEffect(() => {
+    playersRef.current = players;
+  }, [players]);
   useEffect(() => {
     if (hostPreparation) {
       if (localGuestName !== null) {
@@ -951,7 +1006,7 @@ export default function RoomPage() {
   }, [players, canonicalLocalPlayerId]);
   const canonicalLocalPlayerName = canonicalLocalPlayer?.name ?? null;
   const canonicalLocalPlayerRole = canonicalLocalPlayer?.role ?? null;
-  const isLocalHost = canonicalLocalPlayerRole === PlayerRole.Host;
+  const isLocalHost = resolvedPeerRole === PeerRole.Host;
   const trimmedRoleSelectionNickname = useMemo(
     () => roleSelectionNickname.trim(),
     [roleSelectionNickname],
@@ -1463,10 +1518,25 @@ export default function RoomPage() {
     [roleSelectionError],
   );
   const handleConfirmSpectatorRole = useCallback(() => {
+    if (canonicalLocalPlayer) {
+      try {
+        applyGameAction({
+          type: "game/leave",
+          payload: { playerId: canonicalLocalPlayer.id },
+        });
+      } catch (error) {
+        setRoleSelectionError(
+          error instanceof Error
+            ? error.message
+            : "Impossible de libérer la place du joueur. Réessayez dans un instant.",
+        );
+        return;
+      }
+    }
     setViewAsSpectator(true);
     setIsRoleSelectionOpen(false);
     setRoleSelectionError(null);
-  }, []);
+  }, [applyGameAction, canonicalLocalPlayer]);
   const handleConfirmPlayerRole = useCallback(() => {
     const trimmedNickname = roleSelectionNickname.trim();
     if (!trimmedNickname) {
@@ -1765,11 +1835,25 @@ export default function RoomPage() {
         setActionError("Participant introuvable.");
         return;
       }
-      setActionError(
-        `L’expulsion de ${target.name} n’est pas encore disponible dans cette version de l’application.`,
-      );
+      try {
+        applyGameAction({
+          type: "game/leave",
+          payload: { playerId },
+        });
+        setSpectators((current) => removeSpectatorById(current, playerId));
+        toast({
+          title: "Joueur retiré",
+          description: `${target.name} a été expulsé de la partie.`,
+        });
+      } catch (error) {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Impossible d’expulser ce joueur. Réessayez dans un instant.",
+        );
+      }
     },
-    [isLocalHost, players],
+    [applyGameAction, isLocalHost, players, toast],
   );
 
   const handleStartGame = useCallback(() => {
