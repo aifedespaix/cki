@@ -73,6 +73,31 @@ export function PlayerBoard({
     : "none";
   const hiddenCount = hiddenCardIds.size;
 
+  const activeTurnBadgeLabel = isActiveTurn
+    ? isLocal
+      ? "À vous de jouer"
+      : isSpectatorView
+        ? `Tour de ${player.name}`
+        : "Tour de l’adversaire"
+    : null;
+
+  let playingStatusMessage: string | null = null;
+  if (status === GameStatus.Playing) {
+    if (isActiveTurn) {
+      playingStatusMessage = isLocal
+        ? "C’est à vous de jouer : masquez les cartes correspondantes ou annoncez une proposition."
+        : isSpectatorView
+          ? `Tour de ${player.name} — observez ses actions en direct.`
+          : "Tour de votre adversaire : observez ses actions avant votre prochain tour.";
+    } else {
+      playingStatusMessage = isLocal
+        ? "Tour de l’adversaire : observez son plateau pour préparer votre réponse."
+        : isSpectatorView
+          ? `En attente du prochain mouvement de ${player.name}.`
+          : "Tour en cours : suivez les manipulations de votre adversaire.";
+    }
+  }
+
   let secretContent: React.ReactNode;
   if (secretCard && showSecretCard) {
     secretContent = <SecretCardPreview card={secretCard} />;
@@ -102,9 +127,13 @@ export function PlayerBoard({
   return (
     <Card
       className={cn(
-        "flex h-full min-h-0 flex-col border-2 shadow-sm transition-colors",
+        "flex h-full min-h-0 flex-col border-2 transition-colors transition-shadow",
         accentClasses[accent],
+        isActiveTurn
+          ? "shadow-lg ring-2 ring-primary/60 ring-offset-2 ring-offset-background"
+          : "shadow-sm ring-1 ring-transparent ring-offset-2 ring-offset-background",
       )}
+      data-active-turn={isActiveTurn ? "true" : "false"}
     >
       <CardHeader className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -135,10 +164,10 @@ export function PlayerBoard({
                 À préparer
               </Badge>
             )}
-            {isActiveTurn ? (
+            {activeTurnBadgeLabel ? (
               <Badge className="flex items-center gap-1 bg-primary/15 text-primary">
                 <TimerIcon aria-hidden className="size-3.5" />
-                Tour en cours
+                {activeTurnBadgeLabel}
               </Badge>
             ) : null}
           </div>
@@ -168,21 +197,17 @@ export function PlayerBoard({
         </div>
 
         <div className="flex flex-1 min-h-0 flex-col space-y-3">
-          <div className="flex flex-wrap items-center justify-between text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:justify-between">
             <span>
               {hiddenCount} carte{hiddenCount > 1 ? "s" : ""} masquée
               {hiddenCount > 1 ? "s" : ""}
             </span>
-            {status === GameStatus.Playing ? (
-              <span>
-                {isActiveTurn
-                  ? "Vous pouvez manipuler vos cartes pendant ce tour."
-                  : isLocal
-                    ? "Tour de l’adversaire."
-                    : "Tour en cours."}
-              </span>
-            ) : null}
           </div>
+          {playingStatusMessage ? (
+            <p className="text-sm font-medium text-foreground">
+              {playingStatusMessage}
+            </p>
+          ) : null}
           <div className="min-h-0 flex-1 overflow-hidden">
             <ul
               className="grid h-full list-none gap-2 overflow-hidden pr-1 sm:gap-3"
