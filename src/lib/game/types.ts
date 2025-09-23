@@ -193,6 +193,10 @@ export type ResetAction = {
   type: "game/reset";
 };
 
+export type RestartAction = {
+  type: "game/restart";
+};
+
 export type LeaveGameAction = {
   type: "game/leave";
   payload: {
@@ -210,6 +214,7 @@ export type Action =
   | EndTurnAction
   | GuessAction
   | ResetAction
+  | RestartAction
   | LeaveGameAction;
 
 /**
@@ -222,6 +227,7 @@ export type SynchronisedAction =
   | Extract<Action, { type: "turn/end" }>
   | Extract<Action, { type: "turn/guess" }>
   | Extract<Action, { type: "game/reset" }>
+  | Extract<Action, { type: "game/restart" }>
   | Extract<Action, { type: "game/leave" }>;
 
 /**

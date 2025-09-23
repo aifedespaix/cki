@@ -32,6 +32,26 @@ const createHostLobby = (): GameState =>
     },
   });
 
+const createPlayingMatch = (): GameState => {
+  const hostLobby = createHostLobby();
+  const withGuest = reduceGameState(hostLobby, {
+    type: "game/joinLobby",
+    payload: { player: { id: guestId, name: "Guest", role: PlayerRole.Guest } },
+  });
+  const withHostSecret = reduceGameState(withGuest, {
+    type: "game/setSecret",
+    payload: { playerId: hostId, cardId: "card-a" },
+  });
+  const withGuestSecret = reduceGameState(withHostSecret, {
+    type: "game/setSecret",
+    payload: { playerId: guestId, cardId: "card-d" },
+  });
+  return reduceGameState(withGuestSecret, {
+    type: "game/start",
+    payload: { startingPlayerId: hostId },
+  });
+};
+
 describe("createActionReplicator", () => {
   it("applies host actions locally and emits acknowledgements", () => {
     const sent: GameActionMessagePayload[] = [];
@@ -227,6 +247,55 @@ describe("action replication integration", () => {
 
     const duplicateAck = guestReplicator.handleRemote(acknowledgement);
     expect(duplicateAck.applied).toBe(false);
+  });
+
+  it("propagates a restart so that both peers return to a fresh lobby", () => {
+    const initialPlaying = createPlayingMatch();
+    let hostState = initialPlaying;
+    let guestState = initialPlaying;
+
+    const hostOutbox: GameActionMessagePayload[] = [];
+
+    const hostReplicator = createActionReplicator({
+      role: PeerRole.Host,
+      localPeerId: "peer-host",
+      send: (payload) => {
+        hostOutbox.push(payload);
+      },
+      onApply: (action) => {
+        hostState = reduceGameState(hostState, action);
+      },
+    });
+
+    const guestReplicator = createActionReplicator({
+      role: PeerRole.Guest,
+      localPeerId: "peer-guest",
+      send: () => {
+        /* Restart actions are already acknowledged by the host. */
+      },
+      onApply: (action) => {
+        guestState = reduceGameState(guestState, action);
+      },
+    });
+
+    const dispatchResult = hostReplicator.dispatch({ type: "game/restart" });
+    expect(dispatchResult.appliedLocally).toBe(true);
+    expect(hostState.status).toBe(GameStatus.Lobby);
+    expect(hostState.players).toHaveLength(1);
+    expect(hostState.players[0]?.id).toBe(hostId);
+
+    expect(hostOutbox).toHaveLength(1);
+    const restartPayload = hostOutbox[0];
+    expect(restartPayload).toBeDefined();
+    if (!restartPayload) {
+      throw new Error("Expected restart payload to be emitted");
+    }
+
+    const remoteResult = guestReplicator.handleRemote(restartPayload);
+    expect(remoteResult.applied).toBe(true);
+    expect(guestState.status).toBe(GameStatus.Lobby);
+    expect(guestState.players).toHaveLength(1);
+    expect(guestState.players[0]?.id).toBe(hostId);
   });
 
   it("propagates leave actions from the host to the guest", () => {

@@ -17,8 +17,8 @@ type HostControlConfig = {
   readonly nextTurnDisabled: boolean;
   readonly onPause?: () => void;
   readonly pauseDisabled: boolean;
-  readonly onResetRound?: () => void;
-  readonly resetDisabled: boolean;
+  readonly onRestartMatch?: () => void;
+  readonly restartDisabled: boolean;
 };
 
 type GuessFailureSummary = {
@@ -82,8 +82,8 @@ function TurnBar({
     nextTurnDisabled,
     onPause,
     pauseDisabled,
-    onResetRound,
-    resetDisabled,
+    onRestartMatch,
+    restartDisabled,
   } = hostControls;
 
   const turnSummary = formatTurnSummary(turn, activePlayerName, status);
@@ -133,15 +133,17 @@ function TurnBar({
                   <PauseIcon aria-hidden className="mr-2 size-4" />
                   Pause
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={onResetRound}
-                  disabled={resetDisabled || !onResetRound}
-                >
-                  <RotateCcwIcon aria-hidden className="mr-2 size-4" />
-                  Réinitialiser
-                </Button>
+                {onRestartMatch ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onRestartMatch}
+                    disabled={restartDisabled}
+                  >
+                    <RotateCcwIcon aria-hidden className="mr-2 size-4" />
+                    Relancer une manche
+                  </Button>
+                ) : null}
               </div>
             ) : null}
           </div>

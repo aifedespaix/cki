@@ -117,6 +117,37 @@ const clonePlayers = (players: Player[]): Player[] =>
     flippedCardIds: [...player.flippedCardIds],
   }));
 
+const resetPlayerForLobby = (player: Player): Player =>
+  normalisePlayer({
+    ...player,
+    secretCardId: undefined,
+    flippedCardIds: [],
+  });
+
+const resetPlayersForLobby = (players: Player[]): Player[] =>
+  players.map((player) => resetPlayerForLobby(player));
+
+type RestartableState = LobbyState | PlayingState | FinishedState;
+
+const ensureHostPlayer = (state: RestartableState): Player => {
+  const byId = state.players.find((player) => player.id === state.hostId);
+  if (byId) {
+    return resetPlayerForLobby({
+      ...byId,
+      role: PlayerRole.Host,
+    });
+  }
+
+  const hostName =
+    state.players.find((player) => player.role === PlayerRole.Host)?.name ??
+    state.hostId;
+
+  return createPlayer(
+    { id: state.hostId, name: hostName, role: PlayerRole.Host },
+    PlayerRole.Host,
+  );
+};
+
 const parseGrid = (grid: Grid): Grid => {
   const parsed = gridSchema.parse(grid);
   return {
@@ -602,6 +633,21 @@ export const reduceGameState = (
     case "game/reset":
       return createInitialState();
 
+    case "game/restart": {
+      if (state.status === GameStatus.Idle) {
+        return state;
+      }
+
+      const restartableState = state as RestartableState;
+
+      return {
+        status: GameStatus.Lobby,
+        hostId: restartableState.hostId,
+        grid: restartableState.grid,
+        players: [ensureHostPlayer(restartableState)],
+      } satisfies LobbyState;
+    }
+
     case "game/leave": {
       const { playerId } = action.payload;
 
@@ -625,15 +671,6 @@ export const reduceGameState = (
         } satisfies LobbyState;
       }
 
-      const resetPlayers = (players: Player[]): Player[] =>
-        players.map((player) =>
-          normalisePlayer({
-            ...player,
-            secretCardId: undefined,
-            flippedCardIds: [],
-          }),
-        );
-
       if (state.status === GameStatus.Playing) {
         const remaining = state.players.filter(
           (player) => player.id !== playerId,
@@ -645,7 +682,7 @@ export const reduceGameState = (
           status: GameStatus.Lobby,
           hostId: state.hostId,
           grid: state.grid,
-          players: resetPlayers(remaining),
+          players: resetPlayersForLobby(remaining),
         } satisfies LobbyState;
       }
 
@@ -660,7 +697,7 @@ export const reduceGameState = (
           status: GameStatus.Lobby,
           hostId: state.hostId,
           grid: state.grid,
-          players: resetPlayers(remaining),
+          players: resetPlayersForLobby(remaining),
         } satisfies LobbyState;
       }
 
