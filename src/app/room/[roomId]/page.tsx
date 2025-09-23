@@ -1312,17 +1312,28 @@ export default function RoomPage() {
 
     const needsSecretSelection =
       gameState.status === GameStatus.Lobby && !localPlayer.secretCardId;
+    const wasPromptedAutomatically = hasPromptedSecretSelection;
 
     if (needsSecretSelection) {
-      if (!hasPromptedSecretSelection) {
+      if (!wasPromptedAutomatically) {
         setSecretSelectionPlayerId((current) => current ?? localPlayer.id);
         setHasPromptedSecretSelection(true);
       }
       return;
     }
 
-    if (hasPromptedSecretSelection) {
+    if (wasPromptedAutomatically) {
       setHasPromptedSecretSelection(false);
+    }
+
+    const shouldCloseSecretSelection =
+      secretSelectionPlayerId !== null &&
+      (gameState.status !== GameStatus.Lobby ||
+        (wasPromptedAutomatically &&
+          secretSelectionPlayerId === localPlayer.id));
+
+    if (shouldCloseSecretSelection) {
+      setSecretSelectionPlayerId(null);
     }
   }, [
     gameState.status,
