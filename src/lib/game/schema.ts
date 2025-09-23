@@ -111,14 +111,24 @@ const lobbyStateSchemaInternal: z.ZodType<LobbyState> = z
     status: z.literal(GameStatus.Lobby),
     hostId: z.string().min(1),
     grid: gridSchema,
-    players: z.array(playerSchema).min(1).max(2),
+    players: z.array(playerSchema).max(2),
   })
   .strict()
   .superRefine((state, ctx) => {
-    if (!state.players.some((player) => player.id === state.hostId)) {
+    const hostPlayers = state.players.filter(
+      (player) => player.role === PlayerRole.Host,
+    );
+    if (hostPlayers.length > 1) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Host player must be present in the lobby",
+        message: "At most one host player can occupy the lobby",
+        path: ["players"],
+      });
+    }
+    if (hostPlayers.length === 1 && hostPlayers[0]?.id !== state.hostId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Host player identifier must match the lobby host",
         path: ["hostId"],
       });
     }
@@ -291,12 +301,22 @@ export const resetActionSchema = z
   })
   .strict();
 
+export const leaveActionSchema = z
+  .object({
+    type: z.literal<"game/leave">("game/leave"),
+    payload: z.object({
+      playerId: z.string().min(1),
+    }),
+  })
+  .strict();
+
 export const synchronisedActionSchema = z.discriminatedUnion("type", [
   updatePlayerNameActionSchema,
   flipCardActionSchema,
   endTurnActionSchema,
   guessActionSchema,
   resetActionSchema,
+  leaveActionSchema,
 ]);
 
 export const actionSchema: z.ZodType<Action> = z.discriminatedUnion("type", [
@@ -309,6 +329,7 @@ export const actionSchema: z.ZodType<Action> = z.discriminatedUnion("type", [
   endTurnActionSchema,
   guessActionSchema,
   resetActionSchema,
+  leaveActionSchema,
 ]);
 
 export const messageSchema: z.ZodType<Message> = z.discriminatedUnion("type", [

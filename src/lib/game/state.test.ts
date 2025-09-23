@@ -127,6 +127,75 @@ describe("reduceGameState", () => {
     );
   });
 
+  it("removes a guest from the lobby when they leave", () => {
+    const lobby = createLobbyState();
+    const withoutGuest = reduceGameState(lobby, {
+      type: "game/leave",
+      payload: { playerId: guestId },
+    });
+
+    expect(withoutGuest.status).toBe(GameStatus.Lobby);
+    expect(withoutGuest.players).toHaveLength(1);
+    expect(withoutGuest.players[0]?.id).toBe(hostId);
+  });
+
+  it("keeps the guest in the lobby when the host vacates their seat", () => {
+    const lobby = createLobbyState();
+    const withoutHost = reduceGameState(lobby, {
+      type: "game/leave",
+      payload: { playerId: hostId },
+    });
+
+    expect(withoutHost.status).toBe(GameStatus.Lobby);
+    expect(withoutHost.players).toHaveLength(1);
+    expect(withoutHost.players[0]?.id).toBe(guestId);
+  });
+
+  it("empties the lobby when the host is the only player and leaves", () => {
+    const hostOnlyLobby = reduceGameState(createInitialState(), {
+      type: "game/createLobby",
+      payload: {
+        grid: createGrid(),
+        host: { id: hostId, name: "Host", role: PlayerRole.Host },
+      },
+    });
+
+    const emptied = reduceGameState(hostOnlyLobby, {
+      type: "game/leave",
+      payload: { playerId: hostId },
+    });
+
+    expect(emptied.status).toBe(GameStatus.Lobby);
+    expect(emptied.players).toHaveLength(0);
+  });
+
+  it("ignores leave actions targeting unknown players", () => {
+    const lobby = createLobbyState();
+    const untouched = reduceGameState(lobby, {
+      type: "game/leave",
+      payload: { playerId: "missing" },
+    });
+
+    expect(untouched).toBe(lobby);
+  });
+
+  it("allows the host to reclaim their seat after leaving", () => {
+    const lobby = createLobbyState();
+    const withoutHost = reduceGameState(lobby, {
+      type: "game/leave",
+      payload: { playerId: hostId },
+    });
+    const rejoined = reduceGameState(withoutHost, {
+      type: "game/joinLobby",
+      payload: { player: { id: hostId, name: "Host Revenant" } },
+    });
+
+    const hostPlayer = selectPlayerById(rejoined, hostId);
+    expect(hostPlayer).toBeDefined();
+    expect(hostPlayer?.role).toBe(PlayerRole.Host);
+    expect(hostPlayer?.name).toBe("Host Revenant");
+  });
+
   it("ignores join actions replayed after the match has started", () => {
     const playing = createPlayingState();
     const replayed = reduceGameState(playing, {
@@ -421,6 +490,38 @@ describe("reduceGameState", () => {
         },
       }),
     ).toThrow(InvalidGameActionError);
+  });
+
+  it("returns to the lobby when the guest leaves during a match", () => {
+    const playing = createPlayingState();
+    const afterLeave = reduceGameState(playing, {
+      type: "game/leave",
+      payload: { playerId: guestId },
+    });
+
+    expect(afterLeave.status).toBe(GameStatus.Lobby);
+    expect(afterLeave.players).toHaveLength(1);
+    expect(afterLeave.players[0]).toMatchObject({
+      id: hostId,
+      secretCardId: undefined,
+      flippedCardIds: [],
+    });
+  });
+
+  it("returns to the lobby when the host leaves during a match", () => {
+    const playing = createPlayingState();
+    const afterLeave = reduceGameState(playing, {
+      type: "game/leave",
+      payload: { playerId: hostId },
+    });
+
+    expect(afterLeave.status).toBe(GameStatus.Lobby);
+    expect(afterLeave.players).toHaveLength(1);
+    expect(afterLeave.players[0]).toMatchObject({
+      id: guestId,
+      secretCardId: undefined,
+      flippedCardIds: [],
+    });
   });
 
   it("resets back to the idle state", () => {

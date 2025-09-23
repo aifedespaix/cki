@@ -193,6 +193,13 @@ export type ResetAction = {
   type: "game/reset";
 };
 
+export type LeaveGameAction = {
+  type: "game/leave";
+  payload: {
+    playerId: string;
+  };
+};
+
 export type Action =
   | CreateLobbyAction
   | JoinLobbyAction
@@ -202,7 +209,8 @@ export type Action =
   | FlipCardAction
   | EndTurnAction
   | GuessAction
-  | ResetAction;
+  | ResetAction
+  | LeaveGameAction;
 
 /**
  * Actions that are synchronised through the peer-to-peer channel after the
@@ -213,7 +221,8 @@ export type SynchronisedAction =
   | Extract<Action, { type: "turn/flipCard" }>
   | Extract<Action, { type: "turn/end" }>
   | Extract<Action, { type: "turn/guess" }>
-  | Extract<Action, { type: "game/reset" }>;
+  | Extract<Action, { type: "game/reset" }>
+  | Extract<Action, { type: "game/leave" }>;
 
 /**
  * Snapshot sent by the host to initialise or resynchronise the guest state.

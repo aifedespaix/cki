@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   type ConnectionPhase,
   createPeer,
+  type DisconnectReason,
   PeerRole,
   type PeerRuntime,
 } from "@/lib/p2p/peer";
@@ -27,6 +28,14 @@ export interface RoomPeerRuntimeState {
   error: Error | null;
 }
 
+export interface RoomPeerRuntimeOptions {
+  onRemoteDisconnect?: (event: {
+    peerId: string | null;
+    reason: DisconnectReason;
+    attempt: number;
+  }) => void;
+}
+
 const createInitialPeerState = (): Omit<RoomPeerRuntimeState, "runtime"> => ({
   peerId: null,
   remotePeerId: null,
@@ -41,11 +50,13 @@ const createInitialPeerState = (): Omit<RoomPeerRuntimeState, "runtime"> => ({
 export const useRoomPeerRuntime = (
   config: RoomPeerCreationConfig | null,
   remotePeerId: string | null,
+  options?: RoomPeerRuntimeOptions,
 ): RoomPeerRuntimeState => {
   const runtimeRef = useRef<PeerRuntime<GameProtocolMessageMap> | null>(null);
   const [state, setState] = useState<Omit<RoomPeerRuntimeState, "runtime">>(
     createInitialPeerState,
   );
+  const lastRemotePeerIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!config) {
@@ -74,11 +85,13 @@ export const useRoomPeerRuntime = (
       phase: runtime.phase,
       error: null,
     });
+    lastRemotePeerIdRef.current = runtime.remotePeerId;
 
     const offPeerOpen = runtime.events.on("peer/open", ({ peerId }) => {
       setState((previous) => ({ ...previous, peerId }));
     });
     const offRemote = runtime.events.on("connection/remote", ({ peerId }) => {
+      lastRemotePeerIdRef.current = peerId;
       setState((previous) => ({ ...previous, remotePeerId: peerId }));
     });
     const offPhase = runtime.events.on("connection/phase", ({ phase }) => {
@@ -87,13 +100,23 @@ export const useRoomPeerRuntime = (
     const offError = runtime.events.on("connection/error", ({ error }) => {
       setState((previous) => ({ ...previous, error, phase: "error" }));
     });
-    const offDisconnected = runtime.events.on("connection/disconnected", () => {
-      setState((previous) => ({
-        ...previous,
-        remotePeerId: null,
-        phase: "reconnecting",
-      }));
-    });
+    const offDisconnected = runtime.events.on(
+      "connection/disconnected",
+      ({ reason, attempt }) => {
+        const disconnectedPeerId = lastRemotePeerIdRef.current;
+        setState((previous) => ({
+          ...previous,
+          remotePeerId: null,
+          phase: "reconnecting",
+        }));
+        lastRemotePeerIdRef.current = null;
+        options?.onRemoteDisconnect?.({
+          peerId: disconnectedPeerId,
+          reason,
+          attempt,
+        });
+      },
+    );
     const offPeerClose = runtime.events.on("peer/close", () => {
       setState(createInitialPeerState());
     });
@@ -109,7 +132,7 @@ export const useRoomPeerRuntime = (
       runtimeRef.current = null;
       setState(createInitialPeerState());
     };
-  }, [config]);
+  }, [config, options?.onRemoteDisconnect]);
 
   useEffect(() => {
     if (!config || config.role !== PeerRole.Guest) {

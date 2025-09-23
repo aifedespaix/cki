@@ -65,6 +65,11 @@ function PlayerRow({
   onKick?: (playerId: string) => void;
 }) {
   const { player, ready, isLocal, isActive } = summary;
+  const canShowKickButton =
+    isHost &&
+    canKick &&
+    typeof onKick === "function" &&
+    player.role !== PlayerRole.Host;
   const badgeItems = [
     ready
       ? {
@@ -119,7 +124,7 @@ function PlayerRow({
             </p>
           </div>
         </div>
-        {isHost && canKick && onKick ? (
+        {canShowKickButton ? (
           <Button
             type="button"
             variant="outline"

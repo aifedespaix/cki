@@ -17,6 +17,7 @@ import {
   type LobbyState,
   type Player,
   type PlayerIdentity,
+  PlayerRole,
   type PlayingState,
 } from "./types";
 
@@ -205,7 +206,17 @@ export const reduceGameState = (
         `Player "${identity.id}" is already in the lobby`,
       );
 
-      const newPlayer = createPlayer(identity, "guest");
+      const hostSeatOccupied = lobbyState.players.some(
+        (player) => player.role === PlayerRole.Host,
+      );
+      const joiningAsHost = identity.id === lobbyState.hostId;
+      const assignedRole = joiningAsHost ? PlayerRole.Host : PlayerRole.Guest;
+
+      if (joiningAsHost) {
+        assert(!hostSeatOccupied, action, "Host seat is already occupied");
+      }
+
+      const newPlayer = createPlayer(identity, assignedRole);
 
       return {
         ...lobbyState,
@@ -386,7 +397,10 @@ export const reduceGameState = (
       );
 
       const startingPlayerId =
-        action.payload.startingPlayerId ?? lobbyState.hostId;
+        action.payload.startingPlayerId ??
+        (lobbyState.players.some((player) => player.id === lobbyState.hostId)
+          ? lobbyState.hostId
+          : (lobbyState.players[0]?.id ?? lobbyState.hostId));
       const startingPlayer = lobbyState.players.find(
         (player) => player.id === startingPlayerId,
       );
@@ -587,6 +601,71 @@ export const reduceGameState = (
 
     case "game/reset":
       return createInitialState();
+
+    case "game/leave": {
+      const { playerId } = action.payload;
+
+      if (state.status === GameStatus.Idle) {
+        return state;
+      }
+
+      if (state.status === GameStatus.Lobby) {
+        const index = state.players.findIndex(
+          (player) => player.id === playerId,
+        );
+        if (index === -1) {
+          return state;
+        }
+        const remaining = state.players.filter(
+          (player) => player.id !== playerId,
+        );
+        return {
+          ...state,
+          players: clonePlayers(remaining),
+        } satisfies LobbyState;
+      }
+
+      const resetPlayers = (players: Player[]): Player[] =>
+        players.map((player) =>
+          normalisePlayer({
+            ...player,
+            secretCardId: undefined,
+            flippedCardIds: [],
+          }),
+        );
+
+      if (state.status === GameStatus.Playing) {
+        const remaining = state.players.filter(
+          (player) => player.id !== playerId,
+        );
+        if (remaining.length === state.players.length) {
+          return state;
+        }
+        return {
+          status: GameStatus.Lobby,
+          hostId: state.hostId,
+          grid: state.grid,
+          players: resetPlayers(remaining),
+        } satisfies LobbyState;
+      }
+
+      if (state.status === GameStatus.Finished) {
+        const remaining = state.players.filter(
+          (player) => player.id !== playerId,
+        );
+        if (remaining.length === state.players.length) {
+          return state;
+        }
+        return {
+          status: GameStatus.Lobby,
+          hostId: state.hostId,
+          grid: state.grid,
+          players: resetPlayers(remaining),
+        } satisfies LobbyState;
+      }
+
+      return state;
+    }
 
     default:
       return state;
