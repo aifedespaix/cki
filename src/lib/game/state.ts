@@ -273,8 +273,39 @@ export const reduceGameState = (
     }
 
     case "game/setSecret": {
-      const lobbyState = expectState(state, GameStatus.Lobby, action);
       const { playerId, cardId } = action.payload;
+
+      if (
+        state.status === GameStatus.Playing ||
+        state.status === GameStatus.Finished
+      ) {
+        ensureCardBelongsToGrid(state.grid, cardId, action);
+
+        const participant = state.players.find(
+          (player) => player.id === playerId,
+        );
+        assert(
+          participant,
+          action,
+          `Player "${playerId}" is not part of the match`,
+        );
+
+        assert(
+          typeof participant.secretCardId === "string",
+          action,
+          `Player "${playerId}" has no secret card assigned`,
+        );
+
+        assert(
+          participant.secretCardId === cardId,
+          action,
+          "Cannot change the secret card once the match has started",
+        );
+
+        return state;
+      }
+
+      const lobbyState = expectState(state, GameStatus.Lobby, action);
 
       ensureCardBelongsToGrid(lobbyState.grid, cardId, action);
 
@@ -314,6 +345,34 @@ export const reduceGameState = (
     }
 
     case "game/start": {
+      if (state.status === GameStatus.Playing) {
+        const requestedStartingPlayerId =
+          action.payload.startingPlayerId ?? state.hostId;
+        const startingPlayer = state.players.find(
+          (player) => player.id === requestedStartingPlayerId,
+        );
+        assert(
+          startingPlayer,
+          action,
+          `Starting player "${requestedStartingPlayerId}" is not part of the match`,
+        );
+
+        assert(
+          startingPlayer.id === state.activePlayerId,
+          action,
+          "Cannot change the starting player once the match has started",
+        );
+
+        return state;
+      }
+
+      if (state.status === GameStatus.Finished) {
+        throw new InvalidGameActionError(
+          action,
+          "Cannot start a match that has already finished",
+        );
+      }
+
       const lobbyState = expectState(state, GameStatus.Lobby, action);
       requireTwoPlayers(lobbyState.players, action);
 

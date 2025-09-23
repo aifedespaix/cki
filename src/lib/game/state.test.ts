@@ -234,6 +234,27 @@ describe("reduceGameState", () => {
     expect(isPlayerReady(updated, hostId)).toBe(true);
   });
 
+  it("ignores secret selection replays once the match has started", () => {
+    const playing = createPlayingState();
+    const replayed = reduceGameState(playing, {
+      type: "game/setSecret",
+      payload: { playerId: hostId, cardId: "card-a" },
+    });
+
+    expect(replayed).toBe(playing);
+  });
+
+  it("rejects changing a secret once the match has started", () => {
+    const playing = createPlayingState();
+
+    expect(() =>
+      reduceGameState(playing, {
+        type: "game/setSecret",
+        payload: { playerId: hostId, cardId: "card-b" },
+      }),
+    ).toThrow(InvalidGameActionError);
+  });
+
   it("rejects selecting a secret that is not part of the grid", () => {
     const lobby = createLobbyState();
     expect(() =>
@@ -252,6 +273,27 @@ describe("reduceGameState", () => {
     expect(playing.turn).toBe(1);
     expect(playing.lastGuessResult).toBeNull();
     expect(selectActivePlayer(playing)?.id).toBe(hostId);
+  });
+
+  it("ignores duplicated start actions once the match is running", () => {
+    const playing = createPlayingState();
+    const replayed = reduceGameState(playing, {
+      type: "game/start",
+      payload: { startingPlayerId: hostId },
+    });
+
+    expect(replayed).toBe(playing);
+  });
+
+  it("rejects changing the starting player after the match has begun", () => {
+    const playing = createPlayingState();
+
+    expect(() =>
+      reduceGameState(playing, {
+        type: "game/start",
+        payload: { startingPlayerId: guestId },
+      }),
+    ).toThrow(InvalidGameActionError);
   });
 
   it("prevents flipping cards when not the active player", () => {
