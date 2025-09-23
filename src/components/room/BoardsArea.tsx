@@ -85,9 +85,13 @@ export function BoardsArea({
       if (!node) {
         return { width: 0, height: 0 } satisfies Size;
       }
+
+      const width = Math.max(node.offsetWidth, node.scrollWidth);
+      const height = Math.max(node.offsetHeight, node.scrollHeight);
+
       return {
-        width: node.offsetWidth,
-        height: node.offsetHeight,
+        width,
+        height,
       } satisfies Size;
     });
   }, [boards.length]);
