@@ -71,6 +71,9 @@ export function BoardsArea({
   const areaRef = useRef<HTMLDivElement | null>(null);
   const boardRefs = useRef<Array<HTMLDivElement | null>>([]);
   const previousLayoutRef = useRef<BoardsLayout>("horizontal");
+  const canUseResizeObserver =
+    typeof window !== "undefined" &&
+    typeof window.ResizeObserver !== "undefined";
 
   const [areaSize, setAreaSize] = useState<Size>({ width: 0, height: 0 });
   const [boardSizes, setBoardSizes] = useState<Size[]>(() =>
@@ -134,7 +137,33 @@ export function BoardsArea({
       return;
     }
 
-    const observer = new ResizeObserver((entries) => {
+    const updateAreaSize = () => {
+      const { width, height } = node.getBoundingClientRect();
+      setAreaSize((previous) => {
+        if (previous.width === width && previous.height === height) {
+          return previous;
+        }
+        return { width, height } satisfies Size;
+      });
+    };
+
+    if (!canUseResizeObserver) {
+      updateAreaSize();
+      if (typeof window !== "undefined") {
+        const handleResize = () => {
+          updateAreaSize();
+          updateBoardSizes();
+        };
+        window.addEventListener("resize", handleResize);
+        return () => {
+          window.removeEventListener("resize", handleResize);
+        };
+      }
+      return;
+    }
+
+    const ResizeObserverConstructor = window.ResizeObserver;
+    const observer = new ResizeObserverConstructor((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
         setAreaSize((previous) => {
@@ -151,7 +180,7 @@ export function BoardsArea({
     return () => {
       observer.disconnect();
     };
-  }, []);
+  }, [canUseResizeObserver, updateBoardSizes]);
 
   useEffect(() => {
     if (boardRefs.current.length === 0) {
@@ -159,11 +188,17 @@ export function BoardsArea({
       return;
     }
 
+    if (!canUseResizeObserver) {
+      updateBoardSizes();
+      return;
+    }
+
+    const ResizeObserverConstructor = window.ResizeObserver;
     const observers = boardRefs.current.map((node) => {
       if (!node) {
         return null;
       }
-      const observer = new ResizeObserver(() => {
+      const observer = new ResizeObserverConstructor(() => {
         updateBoardSizes();
       });
       observer.observe(node);
@@ -177,7 +212,7 @@ export function BoardsArea({
         observer?.disconnect();
       }
     };
-  }, [boards.length, updateBoardSizes]);
+  }, [boards.length, canUseResizeObserver, updateBoardSizes]);
 
   const layout = useMemo(() => {
     const boardCount = boards.length;
@@ -281,18 +316,21 @@ export function BoardsArea({
         const size = boardSizes[index] ?? { width: 0, height: 0 };
         const scaledWidth = size.width * layout.scale;
         const scaledHeight = size.height * layout.scale;
-        const slotStyle: CSSProperties = {
-          width: scaledWidth,
-          height: scaledHeight,
-        };
         const isBoardReady = size.width > 0 && size.height > 0;
+        const slotStyle: CSSProperties | undefined = isBoardReady
+          ? {
+              width: scaledWidth,
+              height: scaledHeight,
+            }
+          : undefined;
+        const shouldHideBoard = isReady && !isBoardReady;
 
         return (
           <div
             key={board.key}
             className={cn(
               "boards-area__slot flex flex-shrink-0 items-start justify-center transition-opacity duration-200",
-              isReady && isBoardReady ? "opacity-100" : "opacity-0",
+              shouldHideBoard ? "opacity-0" : "opacity-100",
             )}
             style={slotStyle}
           >
