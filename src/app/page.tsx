@@ -78,11 +78,14 @@ export default function Home() {
               <Button
                 asChild
                 size="lg"
-                className="group justify-between gap-3"
+                wrapping="wrap"
+                className="group w-full justify-between gap-3 text-left"
                 aria-label={`${action.title} : ${action.buttonLabel}`}
               >
                 <Link href={action.href}>
-                  <span className="text-left">{action.buttonLabel}</span>
+                  <span className="min-w-0 flex-1 text-left">
+                    {action.buttonLabel}
+                  </span>
                   <ArrowRightIcon
                     aria-hidden="true"
                     className="size-4 transition-transform group-hover:translate-x-1"
