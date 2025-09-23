@@ -155,6 +155,7 @@ describe("createActionReplicator", () => {
       issuerPeerId: "peer-guest",
       issuerRole: PeerRole.Guest,
       acknowledgedByHost: false,
+      issuedAt: 1,
     };
 
     const firstResult = hostReplicator.handleRemote(joinPayload);

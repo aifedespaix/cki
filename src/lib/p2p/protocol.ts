@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { actionSchema } from "@/lib/game/schema";
+import { actionSchema, gameStateSchema } from "@/lib/game/schema";
 
 import { PeerRole } from "./peer";
 
@@ -29,10 +29,36 @@ export const gameActionMessageSchema = z
     issuerRole: peerRoleSchema,
     acknowledgedByHost: z.boolean().default(false),
     relayedByPeerId: z.string().min(1).optional(),
+    issuedAt: z.number().int().nonnegative(),
   })
   .strict();
 
 export type GameActionMessagePayload = z.infer<typeof gameActionMessageSchema>;
+
+export const gameSnapshotMessageSchema = z
+  .object({
+    snapshotId: z.string().min(1),
+    issuedAt: z.number().int().nonnegative(),
+    state: gameStateSchema,
+    lastActionId: z.string().min(1).nullable(),
+  })
+  .strict();
+
+export type GameSnapshotMessagePayload = z.infer<
+  typeof gameSnapshotMessageSchema
+>;
+
+export const gameSnapshotAckMessageSchema = z
+  .object({
+    snapshotId: z.string().min(1),
+    receivedAt: z.number().int().nonnegative(),
+    lastActionId: z.string().min(1).nullable(),
+  })
+  .strict();
+
+export type GameSnapshotAckMessagePayload = z.infer<
+  typeof gameSnapshotAckMessageSchema
+>;
 
 const spectatorProfileSchema = z
   .object({
@@ -65,6 +91,8 @@ export type SpectatorRosterMessagePayload = z.infer<
 >;
 
 export interface GameProtocolMessageMap {
+  "game/snapshot": GameSnapshotMessagePayload;
+  "game/snapshot-ack": GameSnapshotAckMessagePayload;
   "game/action": GameActionMessagePayload;
   "spectator/update": SpectatorUpdateMessagePayload;
   "spectator/roster": SpectatorRosterMessagePayload;
@@ -84,6 +112,26 @@ export const validateGameActionMessage = (
   payload: unknown,
 ): GameActionMessagePayload => {
   const result = gameActionMessageSchema.safeParse(payload);
+  if (!result.success) {
+    throw result.error;
+  }
+  return result.data;
+};
+
+export const validateGameSnapshotMessage = (
+  payload: unknown,
+): GameSnapshotMessagePayload => {
+  const result = gameSnapshotMessageSchema.safeParse(payload);
+  if (!result.success) {
+    throw result.error;
+  }
+  return result.data;
+};
+
+export const validateGameSnapshotAckMessage = (
+  payload: unknown,
+): GameSnapshotAckMessagePayload => {
+  const result = gameSnapshotAckMessageSchema.safeParse(payload);
   if (!result.success) {
     throw result.error;
   }

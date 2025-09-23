@@ -115,6 +115,7 @@ export const createActionReplicator = (
       issuerPeerId: options.localPeerId,
       issuerRole: options.role,
       acknowledgedByHost,
+      issuedAt: Date.now(),
     };
 
     try {

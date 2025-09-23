@@ -10,6 +10,7 @@ const createPayload = (suffix: string): GameActionMessagePayload => ({
   issuerPeerId: `peer-${suffix}`,
   issuerRole: PeerRole.Host,
   acknowledgedByHost: true,
+  issuedAt: Number(suffix),
 });
 
 describe("RemoteActionQueue", () => {
